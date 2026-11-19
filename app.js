@@ -61,7 +61,7 @@ var KONFIG = {
     d.contoh = true; d.pinAdmin = '1234';
     d.kantor = { lat: -6.9175, lng: 107.6191, radius: 150, pakai: true, wajib: false };
     var orang = [
-      ['Rina Wulandari', 'Kasir', 'pagi', '1111'], ['Dimas Pratama', 'Barista', 'pagi', '2222'], ['Siti Nurhaliza', 'Admin Gudang', 'pagi', '3333'],
+      ['Thareq Tegar Latuconsina', 'Site Engineer', 'pagi', ''], ['Dimas Pratama', 'Barista', 'pagi', '2222'], ['Siti Nurhaliza', 'Admin Gudang', 'pagi', '3333'],
       ['Agus Setiawan', 'Kurir', 'pagi', '4444'], ['Putri Maharani', 'Kasir', 'siang', '5555'], ['Fajar Nugroho', 'Barista', 'siang', '6666'],
       ['Wahyu Hidayat', 'Satpam', 'malam', '7777'], ['Laras Ayuningtyas', 'Keuangan', 'pagi', '8888'], ['Bayu Saputra', 'Staf Toko', 'siang', '9999']
     ];
