@@ -58,7 +58,7 @@ var KONFIG = {
   function semai(s) { return function () { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
   function dataContoh() {
     var d = dataKosong(), acak = semai(20261107), kini = new Date();
-    d.contoh = true; d.pinAdmin = '1234';
+    d.contoh = true; d.pinAdmin = '0000';
     d.kantor = { lat: -6.9175, lng: 107.6191, radius: 150, pakai: true, wajib: false };
     var orang = [
       ['Thareq Tegar Latuconsina', 'Site Engineer', 'pagi', '1111'], ['Jaka Arifudin Syahbani', 'Quality Control', 'pagi', '2222'], ['Bejo Susilo', 'Pelaksana Proyek', 'pagi', '3333'],
@@ -311,7 +311,7 @@ var KONFIG = {
   var sesiAdmin = DEMO;
   function perluAdmin() {
     if (!D.pinAdmin || sesiAdmin) return Promise.resolve(true);
-    return pinPad('Khusus admin', null, D.pinAdmin, D.contoh ? 'PIN demo: 1234' : '').then(function (ok) { if (ok) sesiAdmin = true; return !!ok; });
+    return pinPad('Khusus admin', null, D.pinAdmin, D.contoh ? 'PIN : 0000' : '').then(function (ok) { if (ok) sesiAdmin = true; return !!ok; });
   }
 
   // ---------- Lokasi & selfie ----------
