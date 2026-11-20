@@ -311,7 +311,7 @@ var KONFIG = {
   var sesiAdmin = DEMO;
   function perluAdmin() {
     if (!D.pinAdmin || sesiAdmin) return Promise.resolve(true);
-    return pinPad('Khusus admin', null, D.pinAdmin, D.contoh ?  : '').then(function (ok) { if (ok) sesiAdmin = true; return !!ok; });
+    return pinPad('Khusus admin', null, D.pinAdmin, D.contoh ? Pin : '').then(function (ok) { if (ok) sesiAdmin = true; return !!ok; });
   }
 
   // ---------- Lokasi & selfie ----------
