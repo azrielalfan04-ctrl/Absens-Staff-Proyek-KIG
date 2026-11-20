@@ -96,13 +96,7 @@ var KONFIG = {
       }
     });
     // pengajuan menunggu & ditolak
-    var bsk = function (n) { return kunciTgl(tambahHari(kini, n)); };
-    d.izin.push({ id: uid(), kid: 'k5', jenis: 'cuti', dari: bsk(3), sampai: bsk(5), alasan: 'Pulang kampung, nikahan kakak', status: 'menunggu', t: tambahHari(kini, -1).toISOString() });
-    d.izin.push({ id: uid(), kid: 'k2', jenis: 'izin', dari: bsk(1), sampai: bsk(1), alasan: 'Antar ibu kontrol ke rumah sakit', status: 'menunggu', t: new Date(kini.getTime() - 3 * 3600e3).toISOString() });
-    d.izin.push({ id: uid(), kid: 'k7', jenis: 'sakit', dari: bsk(0), sampai: bsk(1), alasan: 'Tipes, istirahat 2 hari', status: 'menunggu', t: new Date(kini.getTime() - 5 * 3600e3).toISOString() });
-    d.izin.push({ id: uid(), kid: 'k9', jenis: 'cuti', dari: bsk(-6), sampai: bsk(-5), alasan: 'Liburan keluarga', status: 'ditolak', t: tambahHari(kini, -10).toISOString() });
-    return d;
-  }
+   
   function jadwalMasuk(tgl, sh) { var d = dariKunci(tgl); d.setMinutes(keMenit(sh.masuk)); return d; }
   function jadwalPulang(tgl, sh) { var d = dariKunci(tgl), m = keMenit(sh.pulang); if (m <= keMenit(sh.masuk)) m += 1440; d.setMinutes(m); return d; }
   function hitungLembur(rec, minL) {
