@@ -96,7 +96,7 @@ var KONFIG = {
       }
     });
     // pengajuan menunggu & ditolak
-   
+
   function jadwalMasuk(tgl, sh) { var d = dariKunci(tgl); d.setMinutes(keMenit(sh.masuk)); return d; }
   function jadwalPulang(tgl, sh) { var d = dariKunci(tgl), m = keMenit(sh.pulang); if (m <= keMenit(sh.masuk)) m += 1440; d.setMinutes(m); return d; }
   function hitungLembur(rec, minL) {
