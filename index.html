@@ -10,7 +10,7 @@
 <meta name="theme-color" content="#4f46e5">
 <meta name="description" content="Absensi karyawan untuk UMKM & kantor kecil: check-in/out, lokasi, selfie, shift, izin, kalender, rekap bulanan.">
 <title>Absensi Karyawan</title>
-<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="icon" href="ikon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -60,6 +60,7 @@
     <button class="nav" data-hal="izin"><svg><use href="#i-izin"/></svg><span>Izin</span><i class="lencana" id="lencanaIzin" hidden></i></button>
     <button class="nav" data-hal="karyawan"><svg><use href="#i-orang"/></svg><span>Karyawan</span></button>
     <button class="nav" data-hal="atur"><svg><use href="#i-atur"/></svg><span>Atur</span></button>
+    <button class="nav" type="button" data-admin-auth><svg><use href="#i-gembok"/></svg><span data-admin-label>Masuk admin</span></button>
   </nav>
   <button class="tombol-kiosk" id="bukaKiosk"><svg><use href="#i-kiosk"/></svg><span>Mode kiosk</span></button>
 </aside>
@@ -67,6 +68,7 @@
 <header class="atas-hp" data-bagian="nav">
   <span class="logo" aria-hidden="true"><svg><use href="#i-jam"/></svg></span>
   <b data-tema-nama>CV Maju Bersama</b>
+  <button class="btn" type="button" data-admin-auth><span data-admin-label>Masuk admin</span></button>
   <button class="ikon-btn" id="bukaKiosk2" aria-label="Mode kiosk"><svg><use href="#i-kiosk"/></svg></button>
 </header>
 
@@ -156,7 +158,11 @@
   <section class="hal" id="hal-izin" aria-labelledby="jd-izin" hidden>
     <div class="kepala">
       <div><p class="sapa">Izin, sakit &amp; cuti</p><h1 id="jd-izin" data-bagian="teks">Pengajuan</h1></div>
-      <button class="btn utama" id="izinBaru" data-bagian="utama"><svg><use href="#i-plus"/></svg>Ajukan</button>
+      <div class="baris-aksi">
+        <button class="btn" id="loginAdmin" data-admin-auth type="button">Masuk admin</button>
+        <button class="btn" id="muatIzin" type="button" hidden>Muat ulang</button>
+        <button class="btn utama" id="izinBaru" data-bagian="utama"><svg><use href="#i-plus"/></svg>Ajukan</button>
+      </div>
     </div>
     <div class="tab-seg" role="tablist" aria-label="Saring pengajuan">
       <button role="tab" class="seg" data-saring="menunggu" aria-selected="true">Menunggu</button>
@@ -194,8 +200,7 @@
         <h2><svg class="ikon-judul"><use href="#i-kamera"/></svg>Selfie &amp; keamanan</h2>
         <label class="saklar"><input type="checkbox" id="pakaiSelfie"><span>Minta selfie saat absen</span></label>
         <label class="saklar"><input type="checkbox" id="wajibSelfie"><span>Selfie wajib (tidak bisa dilewati)</span></label>
-        <label class="label" for="inPinAdmin">PIN admin (kosongkan = tanpa kunci)</label><input id="inPinAdmin" inputmode="numeric" maxlength="6" pattern="[0-9]*" autocomplete="off" placeholder="mis. 1234">
-        <p class="bantuan">PIN admin dipakai untuk membuka halaman Rekap, Izin (setujui), Karyawan, Atur dan keluar dari mode kiosk.</p>
+        <p class="bantuan">Untuk memproses pengajuan lintas perangkat, admin masuk dengan email dan kata sandi Supabase pada halaman Izin.</p>
         <div class="baris-aksi"><button class="btn utama" data-bagian="utama">Simpan</button></div>
       </form>
       <form class="kartu form" id="formUang" data-bagian="panel">
@@ -207,7 +212,7 @@
       </form>
       <div class="kartu form" data-bagian="panel">
         <h2><svg class="ikon-judul"><use href="#i-unduh"/></svg>Data &amp; cadangan</h2>
-        <p class="bantuan">Data tersimpan di browser perangkat ini. Rajin backup JSON, terutama di perangkat kiosk.</p>
+        <p class="bantuan">Data absensi, karyawan, pengaturan, dan foto tersimpan di perangkat ini. Pengajuan izin dibagikan lewat Supabase; backup JSON tetap tersimpan lokal.</p>
         <div class="tombol-data">
           <button class="btn" id="eksporAbsen"><svg><use href="#i-unduh"/></svg>Ekspor absen (CSV)</button>
           <button class="btn" id="backup"><svg><use href="#i-unduh"/></svg>Backup JSON</button>
@@ -251,6 +256,8 @@
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
+  <p class="kredit-maliki" style="margin:24px auto 112px;padding:0 16px;text-align:center;font:12px/1.5 system-ui,sans-serif;opacity:.7">Template oleh <a href="https://malikisaputra.biz.id" target="_blank" rel="noopener" style="color:inherit">@malikisaputra</a></p>
 </body>
 </html>

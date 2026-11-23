@@ -1,11 +1,13 @@
 /* kredit-maliki: Template oleh Maliki Saputra (@malikisaputra) — https://malikisaputra.biz.id. Lisensi Nonkomersial Maliki Studio: wajib kredit, dilarang dijual (lihat LICENSE). */
-/* Absensi Karyawan — web app absensi untuk UMKM & kantor kecil. HTML/CSS/JS murni, data di localStorage, selfie di IndexedDB.
+/* Absensi Karyawan — web app absensi untuk UMKM & kantor kecil. HTML/CSS/JS murni, absensi di localStorage, izin di Supabase, selfie di IndexedDB.
    Dibuat oleh Maliki Studio — malikisaputra.biz.id (Lisensi Nonkomersial Maliki Studio). Peta kode: lihat .claude/skills/ubah-absensi-karyawan/SKILL.md */
 /* KONFIG gambar — ganti logo/foto cukup timpa berkas di img/ atau ubah path di sini. */
 var KONFIG = {
   logo: 'img/logo.svg',          // logo usaha: sidebar, header HP, kiosk ('' = pakai inisial)
   fotoKaryawanBawaan: '',        // mis. 'img/karyawan.svg' untuk karyawan tanpa foto ('' = inisial berwarna)
-  fotoMaksPx: 400                // foto karyawan yang diunggah diperkecil ke sisi terpanjang ini
+  fotoMaksPx: 400,               // foto karyawan yang diunggah diperkecil ke sisi terpanjang ini
+  supabaseUrl: 'https://ejbjbrqbaxpktcbjymdk.supabase.co',
+  supabasePublishableKey: 'sb_publishable_-OcD3qhIAQWPB5HdbjLo6Q_CJMB6hiT'
 };
 (function () {
   'use strict';
@@ -14,6 +16,7 @@ var KONFIG = {
   var VERSI = 1;
   var NAMA_TEMA = (window.TEMA && window.TEMA.nama) || 'Kantor Saya';
   var DEMO = /[?&]demo\b/.test(location.search);
+  var MODE_ADMIN = /[?&]admin=1(?:&|$)/.test(location.search);
 
   // ---------- Utilitas ----------
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -57,7 +60,7 @@ var KONFIG = {
   }
   function dataContoh() {
     var d = dataKosong(), mulai = kunciTgl(new Date());
-    d.contoh = true; d.pinAdmin = '1234';
+    d.contoh = false; d.pinAdmin = '';
     var orang = [
       ['Thareq Tegar Latuconsina', 'Site Engineer', 'pagi', '1111'],
       ['Jaka Arifudin Syahbani', 'Quality Control', 'pagi', '2222'],
@@ -78,19 +81,31 @@ var KONFIG = {
     return lebih >= (minL || 0) ? lebih : 0;
   }
 
-  var D;
+  var D, supabaseClient = null, adminUser = null;
+  var cloudIzinAktif = !!(KONFIG.supabaseUrl && KONFIG.supabasePublishableKey);
   function muat() {
     var s = null;
     try { s = JSON.parse(localStorage.getItem(KUNCI)); } catch (e) { s = null; }
     if (!s || typeof s !== 'object') { D = dataContoh(); simpan(); return; }
     var k = dataKosong();
+    var bersihkanContoh = false;
+    if (s.contoh) {
+      var bersih = dataContoh();
+      s.karyawan = bersih.karyawan; s.absen = []; s.izin = []; s.contoh = false; s.pinAdmin = '';
+      bersihkanContoh = true;
+    }
     Object.keys(k).forEach(function (x) { if (s[x] === undefined) s[x] = k[x]; });
     ['kantor', 'selfie', 'uang'].forEach(function (x) { Object.keys(k[x]).forEach(function (y) { if (s[x][y] === undefined) s[x][y] = k[x][y]; }); });
     // migrasi versi berikutnya taruh di sini: if (s.versi < 2) { ...; s.versi = 2; }
     D = s;
+    if (bersihkanContoh) simpan();
   }
   function simpan() {
-    try { localStorage.setItem(KUNCI, JSON.stringify(D)); }
+    try {
+      var lokal = D;
+      if (cloudIzinAktif) { lokal = Object.assign({}, D); lokal.izin = []; }
+      localStorage.setItem(KUNCI, JSON.stringify(lokal));
+    }
     catch (e) { toast('Penyimpanan penuh — backup lalu hapus data lama'); }
   }
   function perangkat() { try { return localStorage.getItem(KUNCI_PERANGKAT); } catch (e) { return null; } }
@@ -275,12 +290,62 @@ var KONFIG = {
       setTimeout(function () { var b = $('#pinPad button[data-n="1"]', badan); if (b) b.focus(); }, 80);
     });
   }
-  var sesiAdmin = DEMO;
-  function perluAdmin() {
-    if (!D.pinAdmin || sesiAdmin) return Promise.resolve(true);
-    return pinPad('Khusus admin', null, D.pinAdmin, D.contoh ? 'PIN ' : '').then(function (ok) { if (ok) sesiAdmin = true; return !!ok; });
+  function statusTombolAdmin() {
+    $$('[data-admin-auth]').forEach(function (b) {
+      var label = $('[data-admin-label]', b);
+      if (label) label.textContent = adminUser ? 'Keluar admin' : 'Masuk admin';
+      else b.textContent = adminUser ? 'Keluar admin' : 'Masuk admin';
+      b.setAttribute('aria-label', adminUser ? 'Keluar dari akun admin' : 'Masuk sebagai admin');
+    });
+    var muatBtn = $('#muatIzin'); if (muatBtn) muatBtn.hidden = !adminUser;
   }
-
+  function periksaAdmin(user) {
+    if (!user || !supabaseClient) { adminUser = null; statusTombolAdmin(); return Promise.resolve(null); }
+    return supabaseClient.from('admin_users').select('user_id').eq('user_id', user.id).maybeSingle().then(function (r) {
+      adminUser = !r.error && r.data ? user : null;
+      statusTombolAdmin();
+      if (adminUser) return muatIzinCloud().then(function () { return adminUser; });
+      if (!r.error && supabaseClient) supabaseClient.auth.signOut();
+      return null;
+    });
+  }
+  function muatIzinCloud() {
+    if (!adminUser || !supabaseClient) return Promise.resolve(false);
+    return supabaseClient.from('izin').select('*').order('t', { ascending: false }).limit(500).then(function (r) {
+      if (r.error) { toast('Data izin gagal dimuat. Periksa tabel dan aturan RLS Supabase.'); return false; }
+      D.izin = (r.data || []).map(function (z) { return { id: z.id, kid: z.kid, nama: z.nama_karyawan, jenis: z.jenis, dari: z.dari, sampai: z.sampai, alasan: z.alasan, status: z.status, t: z.t, diproses: z.diproses }; });
+      simpan(); renderSemua(); renderLencana(); return true;
+    });
+  }
+  function loginAdmin() {
+    if (!supabaseClient) { toast('Supabase belum siap. Periksa koneksi internet.'); return Promise.resolve(false); }
+    return dialog('Masuk admin', '<label class="label" for="adminEmail">Email admin</label><input id="adminEmail" type="email" autocomplete="username" required><label class="label" for="adminPassword">Kata sandi</label><input id="adminPassword" type="password" autocomplete="current-password" required>', [
+      { label: 'Batal', nilai: null },
+      { label: 'Masuk', kelas: 'utama', submit: true, cek: function () { if (!$('#adminEmail').value.trim() || !$('#adminPassword').value) { toast('Isi email dan kata sandi admin'); return false; } }, nilai: function () { return { email: $('#adminEmail').value.trim(), password: $('#adminPassword').value }; } }
+    ]).then(function (v) {
+      if (!v) return false;
+      return supabaseClient.auth.signInWithPassword(v).then(function (r) {
+        if (r.error) { toast('Login gagal. Periksa email dan kata sandi.'); return false; }
+        return periksaAdmin(r.data.user).then(function (u) {
+          if (!u) { supabaseClient.auth.signOut(); toast('Akun ini belum didaftarkan sebagai admin.'); return false; }
+          toast('Berhasil masuk sebagai admin'); renderIzin(); return true;
+        });
+      });
+    });
+  }
+  function keluarAdmin() {
+    if (!supabaseClient) return Promise.resolve();
+    return supabaseClient.auth.signOut().then(function () {
+      adminUser = null; D.izin = []; statusTombolAdmin(); simpan(); renderSemua();
+      toast('Anda sudah keluar dari akun admin');
+    });
+  }
+  $$('[data-admin-auth]').forEach(function (b) { b.onclick = function () { adminUser ? keluarAdmin() : loginAdmin(); }; });
+  $('#muatIzin').onclick = function () { muatIzinCloud(); };
+  function perluAdmin() {
+    if (adminUser) return Promise.resolve(true);
+    return loginAdmin();
+  }
   // ---------- Lokasi & selfie ----------
   function ambilLokasi() {
     return new Promise(function (ok) {
@@ -378,7 +443,8 @@ var KONFIG = {
   var HAL_ADMIN = ['rekap', 'karyawan', 'atur'];
   var halAktif = 'absen';
   function buka(h, lewatiKunci) {
-    if (HAL_ADMIN.indexOf(h) >= 0 && !lewatiKunci && D.pinAdmin && !sesiAdmin) { perluAdmin().then(function (ok) { if (ok) buka(h, true); }); return; }
+    if (HAL_ADMIN.indexOf(h) >= 0 && !lewatiKunci && !adminUser) { perluAdmin().then(function (ok) { if (ok) buka(h, true); }); return; }
+    if (h === 'izin' && adminUser) muatIzinCloud();
     halAktif = h;
     $$('.hal').forEach(function (s) { s.hidden = s.id !== 'hal-' + h; });
     $$('.nav[data-hal]').forEach(function (b) { var on = b.getAttribute('data-hal') === h; b.classList.toggle('aktif', on); if (on) { b.setAttribute('aria-current', 'page'); b.setAttribute('data-bagian', 'utama'); } else { b.removeAttribute('aria-current'); b.removeAttribute('data-bagian'); } });
@@ -556,10 +622,10 @@ var KONFIG = {
   function renderIzin() {
     var daftar = D.izin.filter(function (z) { return z.status === saringIzin; }).sort(function (a, b) { return saringIzin === 'menunggu' ? a.dari.localeCompare(b.dari) : b.dari.localeCompare(a.dari); }).slice(0, 60);
     $('#daftarIzin').innerHTML = daftar.map(function (z, i) {
-      var k = karyawan(z.kid) || { nama: 'Karyawan dihapus', warna: '#888' }, hari = Math.round((dariKunci(z.sampai) - dariKunci(z.dari)) / 864e5) + 1;
-      return '<li class="kartu izin" data-bagian="panel" style="--i:' + i + '"><div class="atas">' + avatar(k) + '<div><b>' + esc(k.nama) + '</b><small>Diajukan ' + tglPendek(kunciTgl(new Date(z.t))) + '</small></div>' + chip(z.jenis) + '</div>' +
+      var k = karyawan(z.kid) || { nama: z.nama || 'Karyawan dihapus', warna: '#888' }, hari = Math.round((dariKunci(z.sampai) - dariKunci(z.dari)) / 864e5) + 1;
+      return '<li class="kartu izin" data-bagian="panel" style="--i:' + i + '"><div class="atas">' + avatar(k) + '<div><b>' + esc(z.nama || k.nama) + '</b><small>Diajukan ' + tglPendek(kunciTgl(new Date(z.t))) + '</small></div>' + chip(z.jenis) + '</div>' +
         '<p class="tanggal"><svg><use href="#i-kal"/></svg>' + tglPendek(z.dari) + (z.sampai !== z.dari ? ' – ' + tglPendek(z.sampai) : '') + ' · ' + hari + ' hari</p><q>' + esc(z.alasan) + '</q>' +
-        (z.status === 'menunggu' ? '<div class="aksi"><button class="btn bahaya" data-tolak="' + z.id + '"><svg><use href="#i-x"/></svg>Tolak</button><button class="btn hijau" data-setuju="' + z.id + '"><svg><use href="#i-cek"/></svg>Setujui</button></div>' : '<div class="aksi">' + chip(z.status) + '</div>') + '</li>';
+        (z.status === 'menunggu' && adminUser ? '<div class="aksi"><button class="btn bahaya" data-tolak="' + z.id + '"><svg><use href="#i-x"/></svg>Tolak</button><button class="btn hijau" data-setuju="' + z.id + '"><svg><use href="#i-cek"/></svg>Setujui</button></div>' : '<div class="aksi">' + chip(z.status) + (z.diproses ? '<small>Diproses ' + tglPendek(kunciTgl(new Date(z.diproses))) + '</small>' : '') + '</div>') + '</li>';
     }).join('') || '<li class="kosong-state"><svg><use href="#i-izin"/></svg><b>' + (saringIzin === 'menunggu' ? 'Tidak ada pengajuan menunggu' : 'Belum ada data') + '</b>' + (saringIzin === 'menunggu' ? 'Semua pengajuan sudah diproses.' : '') + '</li>';
     $$('[data-setuju],[data-tolak]').forEach(function (b) {
       b.onclick = function () {
@@ -567,10 +633,15 @@ var KONFIG = {
         perluAdmin().then(function (ok) {
           if (!ok) return;
           var z = D.izin.filter(function (x) { return x.id === id; })[0]; if (!z) return;
-          z.status = setuju ? 'disetujui' : 'ditolak'; z.diproses = new Date().toISOString(); simpan();
+          if (!adminUser) { toast('Masuk sebagai admin untuk memproses pengajuan'); return; }
+          var statusBaru = setuju ? 'disetujui' : 'ditolak', waktuProses = new Date().toISOString();
+          supabaseClient.from('izin').update({ status: statusBaru, diproses: waktuProses }).eq('id', id).then(function (r) {
+            if (r.error) { toast('Status gagal disimpan ke Supabase'); return; }
+            z.status = statusBaru; z.diproses = waktuProses; simpan();
           var li = b.closest('.izin');
-          var lanjut = function () { renderIzin(); renderLencana(); toast(setuju ? 'Pengajuan disetujui' : 'Pengajuan ditolak'); };
+          var lanjut = function () { muatIzinCloud(); toast(setuju ? 'Pengajuan disetujui' : 'Pengajuan ditolak'); };
           if (li && !kurangGerak) { li.style.transition = 'opacity .25s, transform .25s'; li.style.opacity = '0'; li.style.transform = 'scale(.96)'; setTimeout(lanjut, 240); } else lanjut();
+          });
         });
       };
     });
@@ -592,8 +663,18 @@ var KONFIG = {
       $$('.seg[data-j]', badan).forEach(function (b) { b.onclick = function () { jenis = b.getAttribute('data-j'); $$('.seg[data-j]', badan).forEach(function (x) { x.setAttribute('aria-checked', x === b); x.setAttribute('aria-selected', x === b); }); }; });
     }).then(function (v) {
       if (!v || !v.kid) return;
-      D.izin.push({ id: uid(), kid: v.kid, jenis: v.jenis, dari: v.dari, sampai: v.sampai, alasan: v.alasan, status: 'menunggu', t: new Date().toISOString() });
-      simpan(); renderSemua(); toast('Pengajuan terkirim, menunggu persetujuan admin');
+      var k = karyawan(v.kid), baris = { kid: v.kid, nama_karyawan: k ? k.nama : 'Karyawan', jenis: v.jenis, dari: v.dari, sampai: v.sampai, alasan: v.alasan };
+      if (cloudIzinAktif && !supabaseClient) { toast('Supabase belum tersambung. Periksa internet lalu muat ulang halaman.'); return; }
+      if (cloudIzinAktif) {
+        supabaseClient.from('izin').insert(baris).then(function (r) {
+          if (r.error) { toast('Pengajuan gagal dikirim ke Supabase. Periksa tabel izin dan kebijakan RLS.'); return; }
+          D.izin.push({ id: uid(), kid: v.kid, nama: baris.nama_karyawan, jenis: v.jenis, dari: v.dari, sampai: v.sampai, alasan: v.alasan, status: 'menunggu', t: new Date().toISOString() });
+          simpan(); renderSemua(); toast('Pengajuan terkirim ke admin');
+        });
+      } else {
+        D.izin.push({ id: uid(), kid: v.kid, nama: baris.nama_karyawan, jenis: v.jenis, dari: v.dari, sampai: v.sampai, alasan: v.alasan, status: 'menunggu', t: new Date().toISOString() });
+        simpan(); renderSemua(); toast('Pengajuan tersimpan di perangkat ini');
+      }
     });
   }
 
@@ -688,7 +769,7 @@ var KONFIG = {
   function renderAtur() {
     $('#pakaiLokasi').checked = D.kantor.pakai; $('#wajibRadius').checked = D.kantor.wajib;
     $('#inLat').value = D.kantor.lat == null ? '' : D.kantor.lat; $('#inLng').value = D.kantor.lng == null ? '' : D.kantor.lng; $('#inRadius').value = D.kantor.radius;
-    $('#pakaiSelfie').checked = D.selfie.pakai; $('#wajibSelfie').checked = D.selfie.wajib; $('#inPinAdmin').value = D.pinAdmin;
+    $('#pakaiSelfie').checked = D.selfie.pakai; $('#wajibSelfie').checked = D.selfie.wajib;
     $('#inMakan').value = D.uang.makan.toLocaleString('id-ID'); $('#inLembur').value = D.uang.lembur.toLocaleString('id-ID');
     $('#inPotTelat').value = D.uang.potTelat.toLocaleString('id-ID'); $('#inPotAlpa').value = D.uang.potAlpa.toLocaleString('id-ID'); $('#inMinLembur').value = D.uang.minLembur;
   }
@@ -714,11 +795,8 @@ var KONFIG = {
   };
   $('#formSelfie').onsubmit = function (e) {
     e.preventDefault();
-    var pin = $('#inPinAdmin').value.trim();
-    if (pin && !/^\d{4,6}$/.test(pin)) { $('#inPinAdmin').setAttribute('aria-invalid', 'true'); toast('PIN admin harus 4–6 angka'); return; }
-    $('#inPinAdmin').removeAttribute('aria-invalid');
     D.selfie = { pakai: $('#pakaiSelfie').checked || $('#wajibSelfie').checked, wajib: $('#wajibSelfie').checked };
-    D.pinAdmin = pin; if (pin) sesiAdmin = true; D.contoh = D.contoh && pin === '1234';
+    D.pinAdmin = ''; D.contoh = false;
     simpan(); renderAtur(); toast('Pengaturan disimpan');
   };
   $('#formUang').onsubmit = function (e) {
@@ -900,8 +978,17 @@ var KONFIG = {
   $$('[data-tema-nama]').forEach(function (e) { e.textContent = NAMA_TEMA; });
   pasangLogo();
   detik();
+  if (window.supabase && window.supabase.createClient) supabaseClient = window.supabase.createClient(KONFIG.supabaseUrl, KONFIG.supabasePublishableKey);
+  statusTombolAdmin();
   var awalHal = (location.hash || '').slice(1);
-  if (awalHal === 'kiosk') { buka('absen'); bukaKiosk(); }
+  if (MODE_ADMIN) {
+    buka('izin');
+    if (supabaseClient) supabaseClient.auth.getSession().then(function (r) {
+      return periksaAdmin(r.data && r.data.session ? r.data.session.user : null);
+    }).then(function (u) { if (u) buka('izin', true); else loginAdmin().then(function (ok) { if (ok) buka('izin', true); }); });
+    else loginAdmin();
+  } else if (awalHal === 'kiosk') { buka('absen'); bukaKiosk(); }
   else buka(['absen', 'kalender', 'rekap', 'izin', 'karyawan', 'atur'].indexOf(awalHal) >= 0 ? awalHal : 'absen');
   tandaiBagian(); hitungTeksBagian();
+  if (supabaseClient && !MODE_ADMIN) supabaseClient.auth.getSession().then(function (r) { return periksaAdmin(r.data && r.data.session ? r.data.session.user : null); }).catch(function () { toast('Tidak bisa memeriksa sesi Supabase'); });
 })();
