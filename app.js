@@ -84,7 +84,6 @@ var KONFIG = {
     try { s = JSON.parse(localStorage.getItem(KUNCI)); } catch (e) { s = null; }
     if (!s || typeof s !== 'object') { D = dataContoh(); simpan(); return; }
     var k = dataKosong();
-    if (s.contoh) { s.absen = []; s.izin = []; }
     Object.keys(k).forEach(function (x) { if (s[x] === undefined) s[x] = k[x]; });
     ['kantor', 'selfie', 'uang'].forEach(function (x) { Object.keys(k[x]).forEach(function (y) { if (s[x][y] === undefined) s[x][y] = k[x][y]; }); });
     // migrasi versi berikutnya taruh di sini: if (s.versi < 2) { ...; s.versi = 2; }
