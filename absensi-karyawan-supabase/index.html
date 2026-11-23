@@ -60,6 +60,7 @@
     <button class="nav" data-hal="izin"><svg><use href="#i-izin"/></svg><span>Izin</span><i class="lencana" id="lencanaIzin" hidden></i></button>
     <button class="nav" data-hal="karyawan"><svg><use href="#i-orang"/></svg><span>Karyawan</span></button>
     <button class="nav" data-hal="atur"><svg><use href="#i-atur"/></svg><span>Atur</span></button>
+    <button class="nav" type="button" data-admin-auth><svg><use href="#i-gembok"/></svg><span data-admin-label>Masuk admin</span></button>
   </nav>
   <button class="tombol-kiosk" id="bukaKiosk"><svg><use href="#i-kiosk"/></svg><span>Mode kiosk</span></button>
 </aside>
@@ -67,6 +68,7 @@
 <header class="atas-hp" data-bagian="nav">
   <span class="logo" aria-hidden="true"><svg><use href="#i-jam"/></svg></span>
   <b data-tema-nama>CV Maju Bersama</b>
+  <button class="btn" type="button" data-admin-auth><span data-admin-label>Masuk admin</span></button>
   <button class="ikon-btn" id="bukaKiosk2" aria-label="Mode kiosk"><svg><use href="#i-kiosk"/></svg></button>
 </header>
 
@@ -157,7 +159,7 @@
     <div class="kepala">
       <div><p class="sapa">Izin, sakit &amp; cuti</p><h1 id="jd-izin" data-bagian="teks">Pengajuan</h1></div>
       <div class="baris-aksi">
-        <button class="btn" id="loginAdmin" type="button">Masuk admin</button>
+        <button class="btn" id="loginAdmin" data-admin-auth type="button">Masuk admin</button>
         <button class="btn" id="muatIzin" type="button" hidden>Muat ulang</button>
         <button class="btn utama" id="izinBaru" data-bagian="utama"><svg><use href="#i-plus"/></svg>Ajukan</button>
       </div>

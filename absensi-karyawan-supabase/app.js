@@ -16,6 +16,7 @@ var KONFIG = {
   var VERSI = 1;
   var NAMA_TEMA = (window.TEMA && window.TEMA.nama) || 'Kantor Saya';
   var DEMO = /[?&]demo\b/.test(location.search);
+  var MODE_ADMIN = /[?&]admin=1(?:&|$)/.test(location.search);
 
   // ---------- Utilitas ----------
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -290,9 +291,12 @@ var KONFIG = {
     });
   }
   function statusTombolAdmin() {
-    var b = $('#loginAdmin'); if (!b) return;
-    b.textContent = adminUser ? 'Keluar admin' : 'Masuk admin';
-    b.setAttribute('aria-label', adminUser ? 'Keluar dari akun admin' : 'Masuk sebagai admin');
+    $$('[data-admin-auth]').forEach(function (b) {
+      var label = $('[data-admin-label]', b);
+      if (label) label.textContent = adminUser ? 'Keluar admin' : 'Masuk admin';
+      else b.textContent = adminUser ? 'Keluar admin' : 'Masuk admin';
+      b.setAttribute('aria-label', adminUser ? 'Keluar dari akun admin' : 'Masuk sebagai admin');
+    });
     var muatBtn = $('#muatIzin'); if (muatBtn) muatBtn.hidden = !adminUser;
   }
   function periksaAdmin(user) {
@@ -336,7 +340,7 @@ var KONFIG = {
       toast('Anda sudah keluar dari akun admin');
     });
   }
-  $('#loginAdmin').onclick = function () { adminUser ? keluarAdmin() : loginAdmin(); };
+  $$('[data-admin-auth]').forEach(function (b) { b.onclick = function () { adminUser ? keluarAdmin() : loginAdmin(); }; });
   $('#muatIzin').onclick = function () { muatIzinCloud(); };
   function perluAdmin() {
     if (adminUser) return Promise.resolve(true);
@@ -977,8 +981,14 @@ var KONFIG = {
   if (window.supabase && window.supabase.createClient) supabaseClient = window.supabase.createClient(KONFIG.supabaseUrl, KONFIG.supabasePublishableKey);
   statusTombolAdmin();
   var awalHal = (location.hash || '').slice(1);
-  if (awalHal === 'kiosk') { buka('absen'); bukaKiosk(); }
+  if (MODE_ADMIN) {
+    buka('izin');
+    if (supabaseClient) supabaseClient.auth.getSession().then(function (r) {
+      return periksaAdmin(r.data && r.data.session ? r.data.session.user : null);
+    }).then(function (u) { if (u) buka('izin', true); else loginAdmin().then(function (ok) { if (ok) buka('izin', true); }); });
+    else loginAdmin();
+  } else if (awalHal === 'kiosk') { buka('absen'); bukaKiosk(); }
   else buka(['absen', 'kalender', 'rekap', 'izin', 'karyawan', 'atur'].indexOf(awalHal) >= 0 ? awalHal : 'absen');
   tandaiBagian(); hitungTeksBagian();
-  if (supabaseClient) supabaseClient.auth.getSession().then(function (r) { return periksaAdmin(r.data && r.data.session ? r.data.session.user : null); }).catch(function () { toast('Tidak bisa memeriksa sesi Supabase'); });
+  if (supabaseClient && !MODE_ADMIN) supabaseClient.auth.getSession().then(function (r) { return periksaAdmin(r.data && r.data.session ? r.data.session.user : null); }).catch(function () { toast('Tidak bisa memeriksa sesi Supabase'); });
 })();
