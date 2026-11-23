@@ -58,11 +58,11 @@ var KONFIG = {
   function semai(s) { return function () { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
   function dataContoh() {
     var d = dataKosong(), acak = semai(20261107), kini = new Date();
-    d.contoh = true; d.pinAdmin = '0000';
+    d.contoh = true; d.pinAdmin = '1234';
     d.kantor = { lat: -6.9175, lng: 107.6191, radius: 150, pakai: true, wajib: false };
     var orang = [
-      ['Thareq Tegar Latuconsina', 'Site Engineer', 'pagi', '1111'], ['Jaka Arifudin Syahbani', 'Quality Control', 'pagi', '2222'], ['Bejo Susilo', 'Pelaksana Proyek', 'pagi', '3333'],
-      ['Ghama Aldilla Putra', 'HSE & Logistik', 'pagi', '4444'], ['Isyfa Nurohman', 'Surveyor', 'siang', '5555']
+      ['Thareq Tegar Latuconsina', 'Site Engineer', 'pagi', '1111'], ['Jaka Arifudin Syahbani', 'Quality Control', 'pagi', '2222'], ['Bejo Susilo', 'Pengawas Proyek', 'pagi', '3333'],
+      ['Ghama Aldilla Putra', 'HSE & Logistik', 'pagi', '4444'], ['Isyfa Nurohman', 'Surveyor', 'pagi', '5555']
     ];
     var mulai = new Date(kini.getFullYear(), kini.getMonth() - 1, 1);
     d.karyawan = orang.map(function (o, i) {
@@ -96,13 +96,7 @@ var KONFIG = {
       }
     });
     // pengajuan menunggu & ditolak
-    var bsk = function (n) { return kunciTgl(tambahHari(kini, n)); };
-    d.izin.push({ id: uid(), kid: 'k5', jenis: 'cuti', dari: bsk(3), sampai: bsk(5), alasan: 'Pulang kampung, nikahan kakak', status: 'menunggu', t: tambahHari(kini, -1).toISOString() });
-    d.izin.push({ id: uid(), kid: 'k2', jenis: 'izin', dari: bsk(1), sampai: bsk(1), alasan: 'Antar ibu kontrol ke rumah sakit', status: 'menunggu', t: new Date(kini.getTime() - 3 * 3600e3).toISOString() });
-    d.izin.push({ id: uid(), kid: 'k7', jenis: 'sakit', dari: bsk(0), sampai: bsk(1), alasan: 'Tipes, istirahat 2 hari', status: 'menunggu', t: new Date(kini.getTime() - 5 * 3600e3).toISOString() });
-    d.izin.push({ id: uid(), kid: 'k9', jenis: 'cuti', dari: bsk(-6), sampai: bsk(-5), alasan: 'Liburan keluarga', status: 'ditolak', t: tambahHari(kini, -10).toISOString() });
     return d;
-  }
   }
   function jadwalMasuk(tgl, sh) { var d = dariKunci(tgl); d.setMinutes(keMenit(sh.masuk)); return d; }
   function jadwalPulang(tgl, sh) { var d = dariKunci(tgl), m = keMenit(sh.pulang); if (m <= keMenit(sh.masuk)) m += 1440; d.setMinutes(m); return d; }
@@ -312,7 +306,7 @@ var KONFIG = {
   var sesiAdmin = DEMO;
   function perluAdmin() {
     if (!D.pinAdmin || sesiAdmin) return Promise.resolve(true);
-    return pinPad('Khusus admin', null, D.pinAdmin, D.contoh ? Pin : '').then(function (ok) { if (ok) sesiAdmin = true; return !!ok; });
+    return pinPad('Khusus admin', null, D.pinAdmin, D.contoh ? 'PIN demo: 1234' : '').then(function (ok) { if (ok) sesiAdmin = true; return !!ok; });
   }
 
   // ---------- Lokasi & selfie ----------
