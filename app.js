@@ -55,49 +55,19 @@ var KONFIG = {
       karyawan: [], absen: [], izin: []
     };
   }
-  function semai(s) { return function () { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
   function dataContoh() {
-    var d = dataKosong(), acak = semai(20261107), kini = new Date();
+    var d = dataKosong(), mulai = kunciTgl(new Date());
     d.contoh = true; d.pinAdmin = '1234';
-    d.kantor = { lat: -6.9175, lng: 107.6191, radius: 150, pakai: true, wajib: false };
     var orang = [
-      ['Thareq Tegar Latuconsina', 'Site Engineer', 'pagi', '1111'], ['Jaka Arifudin Syahbani', 'Quality Control', 'pagi', '2222'], ['Bejo Susilo', 'Pengawas Proyek', 'pagi', '3333'],
-      ['Ghama Aldilla Putra', 'HSE & Logistik', 'pagi', '4444'], ['Isyfa Nurohman', 'Surveyor', 'pagi', '5555']
+      ['Thareq Tegar Latuconsina', 'Site Engineer', 'pagi', '1111'],
+      ['Jaka Arifudin Syahbani', 'Quality Control', 'pagi', '2222'],
+      ['Bejo Susilo', 'Pengawas Proyek', 'pagi', '3333'],
+      ['Ghama Aldilla Putra', 'HSE & Logistik', 'pagi', '4444'],
+      ['Isyfa Nurohman', 'Surveyor', 'pagi', '5555']
     ];
-    var mulai = new Date(kini.getFullYear(), kini.getMonth() - 1, 1);
     d.karyawan = orang.map(function (o, i) {
-      return { id: 'k' + (i + 1), nama: o[0], jabatan: o[1], shift: o[2], pin: o[3], hariKerja: o[2] === 'malam' ? [0, 1, 2, 3, 4, 5] : [1, 2, 3, 4, 5, 6], aktif: true, warna: WARNA_AVATAR[i % WARNA_AVATAR.length], mulai: kunciTgl(mulai) };
+      return { id: 'k' + (i + 1), nama: o[0], jabatan: o[1], shift: o[2], pin: o[3], hariKerja: [1, 2, 3, 4, 5, 6], aktif: true, warna: WARNA_AVATAR[i % WARNA_AVATAR.length], mulai: mulai };
     });
-var hariIni = kunciTgl(kini), menitKini = kini.getHours() * 60 + kini.getMinutes();
-    d.karyawan.forEach(function (k, ki) {
-      var sh = d.shift.filter(function (s) { return s.id === k.shift; })[0];
-      for (var t = new Date(mulai); kunciTgl(t) <= hariIni; t = tambahHari(t, 1)) {
-        var kt = kunciTgl(t);
-        if (k.hariKerja.indexOf(t.getDay()) < 0) continue;
-        var r = acak(), hari0 = kt === hariIni;
-        if (hari0 && keMenit(sh.masuk) - 25 > menitKini) continue;      // shift belum mulai
-        if (hari0 && ki === 3) continue;                                  // satu orang belum datang
-        if (!hari0 && r < 0.035) continue;                                // alpa
-        if (!hari0 && r < 0.09) {                                         // izin/sakit/cuti
-          var jenis = r < 0.055 ? 'sakit' : r < 0.075 ? 'izin' : 'cuti';
-          d.izin.push({ id: uid(), kid: k.id, jenis: jenis, dari: kt, sampai: kt, alasan: jenis === 'sakit' ? 'Demam, ada surat dokter' : jenis === 'izin' ? 'Urusan keluarga' : 'Cuti tahunan', status: 'disetujui', t: tambahHari(t, -2).toISOString() });
-          continue;
-        }
-        var telat = acak() < 0.16;
-        var geser = telat ? sh.toleransi + 2 + Math.floor(acak() * 30) : -Math.floor(acak() * 22);
-        var masuk = new Date(t); masuk.setHours(0, keMenit(sh.masuk) + geser, Math.floor(acak() * 59), 0);
-        if (hari0 && masuk > kini) masuk = new Date(kini.getTime() - 60e3 * (5 + ki));
-        var rec = { id: uid() + ki, kid: k.id, tgl: kt, masuk: masuk.toISOString(), pulang: null, telat: 0, lembur: 0, jadwal: { masuk: sh.masuk, pulang: sh.pulang }, lokasi: { lat: d.kantor.lat + (acak() - .5) * .0012, lng: d.kantor.lng + (acak() - .5) * .0012, jarak: Math.round(10 + acak() * 70) }, foto: false, sumber: acak() < .6 ? 'kiosk' : 'hp' };
-        var tl = Math.round((masuk - jadwalMasuk(kt, sh)) / 60e3); rec.telat = tl > sh.toleransi ? tl : 0;
-        var pul = jadwalPulang(kt, sh), ext = acak() < 0.2 ? 35 + Math.floor(acak() * 110) : Math.floor(acak() * 14) - 4;
-        var p = new Date(pul.getTime() + ext * 60e3);
-        if (p < kini) { rec.pulang = p.toISOString(); rec.lembur = hitungLembur(rec, d.uang.minLembur); }
-        d.absen.push(rec);
-      }
-    });
-      }
-    });
-    // pengajuan menunggu & ditolak
     return d;
   }
   function jadwalMasuk(tgl, sh) { var d = dariKunci(tgl); d.setMinutes(keMenit(sh.masuk)); return d; }
@@ -114,6 +84,7 @@ var hariIni = kunciTgl(kini), menitKini = kini.getHours() * 60 + kini.getMinutes
     try { s = JSON.parse(localStorage.getItem(KUNCI)); } catch (e) { s = null; }
     if (!s || typeof s !== 'object') { D = dataContoh(); simpan(); return; }
     var k = dataKosong();
+    if (s.contoh) { s.absen = []; s.izin = []; }
     Object.keys(k).forEach(function (x) { if (s[x] === undefined) s[x] = k[x]; });
     ['kantor', 'selfie', 'uang'].forEach(function (x) { Object.keys(k[x]).forEach(function (y) { if (s[x][y] === undefined) s[x][y] = k[x][y]; }); });
     // migrasi versi berikutnya taruh di sini: if (s.versi < 2) { ...; s.versi = 2; }
