@@ -13,6 +13,8 @@ var KONFIG = {
   'use strict';
   var KUNCI = 'absensiKaryawan.v1';
   var KUNCI_PERANGKAT = 'absensiKaryawan.perangkat';
+  var KUNCI_TOKEN_IZIN = 'absensiKaryawan.izinTokens';
+  var KUNCI_TOKEN_ABSEN = 'absensiKaryawan.absenTokens';
   var VERSI = 1;
   var NAMA_TEMA = (window.TEMA && window.TEMA.nama) || 'PT Farhan Abadi';
   var DEMO = /[?&]demo\b/.test(location.search);
@@ -83,6 +85,84 @@ var KONFIG = {
 
   var D, supabaseClient = null, adminUser = null;
   var cloudIzinAktif = !!(KONFIG.supabaseUrl && KONFIG.supabasePublishableKey);
+  function tokenIzinTersimpan() {
+    try { var a = JSON.parse(localStorage.getItem(KUNCI_TOKEN_IZIN) || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function tokenAbsenTersimpan() {
+    try { var a = JSON.parse(localStorage.getItem(KUNCI_TOKEN_ABSEN) || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function simpanTokenAbsen(a) { try { localStorage.setItem(KUNCI_TOKEN_ABSEN, JSON.stringify(a.slice(-500))); } catch (e) { } }
+  function simpanTokenIzin(a) { try { localStorage.setItem(KUNCI_TOKEN_IZIN, JSON.stringify(a.slice(-100))); } catch (e) { } }
+  function tokenRahasiaBaru() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    var a = new Uint8Array(16); crypto.getRandomValues(a); a[6] = (a[6] & 15) | 64; a[8] = (a[8] & 63) | 128;
+    var h = Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+    return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+  }
+  function muatIzinKaryawan() {
+    if (!supabaseClient || adminUser) return Promise.resolve(false);
+    var tersimpan = tokenIzinTersimpan();
+    if (!tersimpan.length) { D.izin = []; renderIzin(); renderLencana(); return Promise.resolve(true); }
+    return Promise.all(tersimpan.map(function (x) {
+      return supabaseClient.rpc('cek_status_izin', { p_token: x.token }).then(function (r) { return { simpan: x, hasil: r }; });
+    })).then(function (hasil) {
+      var daftar = [], berubah = [], gagal = false;
+      hasil.forEach(function (x) {
+        if (x.hasil.error) { gagal = true; return; }
+        var z = Array.isArray(x.hasil.data) ? x.hasil.data[0] : x.hasil.data;
+        if (!z) return;
+        var s = x.simpan.status || 'menunggu';
+        if (s === 'menunggu' && z.status === 'disetujui') berubah.push({ status: z.status, pesan: 'Pengajuan ' + z.jenis + ' untuk ' + z.dari + ' disetujui.' });
+        if (s === 'menunggu' && z.status === 'ditolak') berubah.push({ status: z.status, pesan: 'Pengajuan ' + z.jenis + ' untuk ' + z.dari + ' ditolak.' });
+        x.simpan.status = z.status;
+        daftar.push({ id: z.id, kid: z.kid, nama: z.nama_karyawan, jenis: z.jenis, dari: z.dari, sampai: z.sampai, alasan: z.alasan, status: z.status, t: z.t, diproses: z.diproses });
+      });
+      simpanTokenIzin(tersimpan); D.izin = daftar; if (berubah.length) saringIzin = berubah[0].status; renderSemua();
+      if (gagal) toast('Status belum bisa dimuat. Admin perlu menjalankan SQL pembaruan izin di Supabase.');
+      else if (berubah.length) toast(berubah[0].pesan + (berubah.length > 1 ? ' Ada ' + (berubah.length - 1) + ' pembaruan status lain.' : ''));
+      return !gagal;
+    }).catch(function () { toast('Tidak bisa memeriksa status izin. Periksa koneksi internet.'); return false; });
+  }
+  function sinkronkanAbsen(rec, pulang) {
+    if (!cloudIzinAktif || !supabaseClient) return Promise.resolve(false);
+    if (!pulang) {
+      var token = tokenRahasiaBaru(), tokens = tokenAbsenTersimpan();
+      tokens.push({ id: rec.id, token: token }); simpanTokenAbsen(tokens);
+      return supabaseClient.from('absensi').insert({
+        id: rec.id, kid: rec.kid, nama_karyawan: rec.namaKaryawan, jabatan: rec.jabatan || '', tgl: rec.tgl, masuk: rec.masuk,
+        telat: rec.telat || 0, lembur: 0, jadwal: rec.jadwal,
+        lokasi: rec.lokasi || null, sumber: rec.sumber || 'hp', checkin_token: token
+      }).then(function (r) { return !r.error; }).catch(function () { return false; });
+    }
+    var saved = tokenAbsenTersimpan().filter(function (x) { return x.id === rec.id; })[0];
+    if (!saved) return Promise.resolve(false);
+    return supabaseClient.rpc('simpan_pulang_absen', {
+      p_token: saved.token, p_pulang: rec.pulang, p_lembur: rec.lembur || 0,
+      p_lokasi_pulang: rec.lokasiPulang || null
+    }).then(function (r) { return !r.error && r.data === true; }).catch(function () { return false; });
+  }
+  function muatAbsenCloud() {
+    if (!adminUser || !supabaseClient) return Promise.resolve(false);
+    return supabaseClient.from('absensi').select('id,kid,nama_karyawan,jabatan,tgl,masuk,pulang,telat,lembur,jadwal,lokasi,lokasi_pulang,sumber').order('tgl', { ascending: false }).limit(10000).then(function (r) {
+      if (r.error) { toast('Rekap absensi cloud gagal dimuat. Periksa tabel dan policy Supabase.'); return false; }
+      var gabung = Object.create(null);
+      D.absen.forEach(function (a) { gabung[String(a.id)] = a; });
+      (r.data || []).forEach(function (a) {
+        var lama = gabung[String(a.id)] || {};
+        if (!karyawan(a.kid)) D.karyawan.push({ id: a.kid, nama: a.nama_karyawan || 'Karyawan', jabatan: a.jabatan || '', shift: 'pagi', pin: '', hariKerja: [1, 2, 3, 4, 5, 6], aktif: true, warna: WARNA_AVATAR[D.karyawan.length % WARNA_AVATAR.length], mulai: a.tgl });
+        gabung[String(a.id)] = {
+          id: a.id, kid: a.kid, tgl: a.tgl, masuk: a.masuk, pulang: a.pulang,
+          telat: a.telat || 0, lembur: a.lembur || 0, jadwal: a.jadwal || lama.jadwal || { masuk: '08:00', pulang: '16:00' },
+          lokasi: a.lokasi || null, lokasiPulang: a.lokasi_pulang || null,
+          foto: lama.foto || false, fotoPulang: lama.fotoPulang || false, sumber: a.sumber || 'hp'
+        };
+      });
+      D.absen = Object.keys(gabung).map(function (id) { return gabung[id]; });
+      simpan(); renderSemua(); return true;
+    }).catch(function () { toast('Tidak bisa mengambil data absensi dari Supabase.'); return false; });
+  }
   function muat() {
     var s = null;
     try { s = JSON.parse(localStorage.getItem(KUNCI)); } catch (e) { s = null; }
@@ -297,14 +377,15 @@ var KONFIG = {
       else b.textContent = adminUser ? 'Keluar admin' : 'Masuk admin';
       b.setAttribute('aria-label', adminUser ? 'Keluar dari akun admin' : 'Masuk sebagai admin');
     });
-    var muatBtn = $('#muatIzin'); if (muatBtn) muatBtn.hidden = !adminUser;
+    var muatBtn = $('#muatIzin'); if (muatBtn) muatBtn.hidden = !adminUser && !tokenIzinTersimpan().length;
+    var izinInfo = $('#izinInfo'); if (izinInfo) izinInfo.textContent = adminUser ? 'Anda melihat semua pengajuan. Muat ulang untuk mengambil data terbaru.' : tokenIzinTersimpan().length ? 'Status pengajuan dari browser ini diperbarui otomatis saat halaman Izin terbuka. Anda juga bisa tekan Muat ulang.' : 'Ajukan izin dari perangkat ini untuk melihat statusnya di sini.';
   }
   function periksaAdmin(user) {
     if (!user || !supabaseClient) { adminUser = null; statusTombolAdmin(); return Promise.resolve(null); }
     return supabaseClient.from('admin_users').select('user_id').eq('user_id', user.id).maybeSingle().then(function (r) {
       adminUser = !r.error && r.data ? user : null;
       statusTombolAdmin();
-      if (adminUser) return muatIzinCloud().then(function () { return adminUser; });
+      if (adminUser) return muatIzinCloud().then(function () { return muatAbsenCloud(); }).then(function () { return adminUser; });
       if (!r.error && supabaseClient) supabaseClient.auth.signOut();
       return null;
     });
@@ -341,7 +422,7 @@ var KONFIG = {
     });
   }
   $$('[data-admin-auth]').forEach(function (b) { b.onclick = function () { adminUser ? keluarAdmin() : loginAdmin(); }; });
-  $('#muatIzin').onclick = function () { muatIzinCloud(); };
+  $('#muatIzin').onclick = function () { if (adminUser) muatIzinCloud(); else muatIzinKaryawan(); };
   function perluAdmin() {
     if (adminUser) return Promise.resolve(true);
     return loginAdmin();
@@ -422,19 +503,23 @@ var KONFIG = {
         if (mP < mM && mK < mP) tgl = kunciTgl(tambahHari(kini, -1));
         if (absenTgl(kid, tgl)) { toast('Sudah check-in untuk ' + tglPendek(tgl)); return; }
         var tel = Math.round((kini - jadwalMasuk(tgl, sh)) / 60e3);
-        rec = { id: uid(), kid: kid, tgl: tgl, masuk: kini.toISOString(), pulang: null, telat: tel > sh.toleransi ? tel : 0, lembur: 0, jadwal: { masuk: sh.masuk, pulang: sh.pulang }, lokasi: lokasi, foto: false, sumber: sumber };
+        rec = { id: uid(), kid: kid, namaKaryawan: k.nama, jabatan: k.jabatan || '', tgl: tgl, masuk: kini.toISOString(), pulang: null, telat: tel > sh.toleransi ? tel : 0, lembur: 0, jadwal: { masuk: sh.masuk, pulang: sh.pulang }, lokasi: lokasi, foto: false, sumber: sumber };
         D.absen.push(rec);
       }
       var simpanFoto = foto ? fotoSimpan(rec.id + (pulang ? '-p' : ''), foto).then(function () { if (!pulang) rec.foto = true; else rec.fotoPulang = true; }).catch(function () { toast('Foto gagal disimpan'); }) : Promise.resolve();
       return simpanFoto.then(function () {
-        simpan(); renderSemua();
-        var telat = !pulang && rec.telat > 0;
-        var sub = pulang ? 'Durasi kerja ' + durasi((new Date(rec.pulang) - new Date(rec.masuk)) / 60e3) + (rec.lembur ? ' · lembur ' + durasi(rec.lembur) : '') : telat ? 'Telat ' + rec.telat + ' menit dari jadwal ' + rec.jadwal.masuk : 'Tepat waktu. Semangat kerjanya!';
-        var html = '<div class="hasil"><span class="centang' + (telat ? ' telat' : '') + '"><svg><use href="#i-cek"/></svg></span><p class="waktu">' + jamDari(pulang ? rec.pulang : rec.masuk) + '</p><b>' + (pulang ? 'Sampai jumpa besok, ' : 'Selamat bekerja, ') + esc(k.nama.split(' ')[0]) + '</b><p class="redup">' + esc(sub) + '</p>' +
-          (lokasi && lokasi.jarak != null ? '<span class="status st-hadir">' + lokasi.jarak + ' m dari kantor</span>' : '') + '</div>';
-        var p = dialog(pulang ? 'Check-out tercatat' : 'Check-in tercatat', html, [{ label: 'Selesai', kelas: 'utama' }]);
-        if (sumber === 'kiosk') { var t = setTimeout(function () { if (dlg.open) tutupDialog(true); }, 4000); p.then(function () { clearTimeout(t); }); }
-        return p;
+        simpan();
+        return sinkronkanAbsen(rec, pulang).then(function (terkirim) {
+          renderSemua();
+          if (cloudIzinAktif && !terkirim) toast('Absen tersimpan di perangkat ini, tetapi belum tersinkron ke admin. Periksa internet dan pengaturan Supabase.');
+          var telat = !pulang && rec.telat > 0;
+          var sub = pulang ? 'Durasi kerja ' + durasi((new Date(rec.pulang) - new Date(rec.masuk)) / 60e3) + (rec.lembur ? ' · lembur ' + durasi(rec.lembur) : '') : telat ? 'Telat ' + rec.telat + ' menit dari jadwal ' + rec.jadwal.masuk : 'Tepat waktu. Semangat kerjanya!';
+          var html = '<div class="hasil"><span class="centang' + (telat ? ' telat' : '') + '"><svg><use href="#i-cek"/></svg></span><p class="waktu">' + jamDari(pulang ? rec.pulang : rec.masuk) + '</p><b>' + (pulang ? 'Sampai jumpa besok, ' : 'Selamat bekerja, ') + esc(k.nama.split(' ')[0]) + '</b><p class="redup">' + esc(sub) + '</p>' +
+            (lokasi && lokasi.jarak != null ? '<span class="status st-hadir">' + lokasi.jarak + ' m dari kantor</span>' : '') + '</div>';
+          var p = dialog(pulang ? 'Check-out tercatat' : 'Check-in tercatat', html, [{ label: 'Selesai', kelas: 'utama' }]);
+          if (sumber === 'kiosk') { var t = setTimeout(function () { if (dlg.open) tutupDialog(true); }, 4000); p.then(function () { clearTimeout(t); }); }
+          return p;
+        });
       });
     });
   }
@@ -444,7 +529,8 @@ var KONFIG = {
   var halAktif = 'absen';
   function buka(h, lewatiKunci) {
     if (HAL_ADMIN.indexOf(h) >= 0 && !lewatiKunci && !adminUser) { perluAdmin().then(function (ok) { if (ok) buka(h, true); }); return; }
-    if (h === 'izin' && adminUser) muatIzinCloud();
+    if (h === 'izin') { if (adminUser) muatIzinCloud(); else muatIzinKaryawan(); }
+    if (h === 'rekap' && adminUser) muatAbsenCloud();
     halAktif = h;
     $$('.hal').forEach(function (s) { s.hidden = s.id !== 'hal-' + h; });
     $$('.nav[data-hal]').forEach(function (b) { var on = b.getAttribute('data-hal') === h; b.classList.toggle('aktif', on); if (on) { b.setAttribute('aria-current', 'page'); b.setAttribute('data-bagian', 'utama'); } else { b.removeAttribute('aria-current'); b.removeAttribute('data-bagian'); } });
@@ -588,6 +674,7 @@ var KONFIG = {
   var rekBulan = new Date(); rekBulan.setDate(1);
   $('#rekSebelum').onclick = function () { rekBulan.setMonth(rekBulan.getMonth() - 1); renderRekap(); };
   $('#rekSesudah').onclick = function () { rekBulan.setMonth(rekBulan.getMonth() + 1); renderRekap(); };
+  $('#muatRekap').onclick = function () { muatAbsenCloud(); };
   function dataRekap() {
     var th = rekBulan.getFullYear(), bl = rekBulan.getMonth();
     return D.karyawan.map(function (k) { return { k: k, r: rekapBulan(k, th, bl) }; }).filter(function (x) { return x.k.aktif !== false || x.r.hadir; });
@@ -668,10 +755,12 @@ var KONFIG = {
       var k = karyawan(v.kid), baris = { kid: v.kid, nama_karyawan: k ? k.nama : 'Karyawan', jenis: v.jenis, dari: v.dari, sampai: v.sampai, alasan: v.alasan };
       if (cloudIzinAktif && !supabaseClient) { toast('Supabase belum tersambung. Periksa internet lalu muat ulang halaman.'); return; }
       if (cloudIzinAktif) {
-        supabaseClient.from('izin').insert(baris).then(function (r) {
+        var token = tokenRahasiaBaru();
+        supabaseClient.from('izin').insert(Object.assign({}, baris, { status_token: token })).then(function (r) {
           if (r.error) { toast('Pengajuan gagal dikirim ke Supabase. Periksa tabel izin dan kebijakan RLS.'); return; }
+          var tokens = tokenIzinTersimpan(); tokens.push({ token: token, status: 'menunggu' }); simpanTokenIzin(tokens); statusTombolAdmin();
           D.izin.push({ id: uid(), kid: v.kid, nama: baris.nama_karyawan, jenis: v.jenis, dari: v.dari, sampai: v.sampai, alasan: v.alasan, status: 'menunggu', t: new Date().toISOString() });
-          simpan(); renderSemua(); toast('Pengajuan terkirim ke admin');
+          simpan(); renderSemua(); toast('Pengajuan terkirim. Status akan diperbarui di halaman Izin.');
         });
       } else {
         D.izin.push({ id: uid(), kid: v.kid, nama: baris.nama_karyawan, jenis: v.jenis, dari: v.dari, sampai: v.sampai, alasan: v.alasan, status: 'menunggu', t: new Date().toISOString() });
@@ -993,4 +1082,12 @@ var KONFIG = {
   else buka(['absen', 'kalender', 'rekap', 'izin', 'karyawan', 'atur'].indexOf(awalHal) >= 0 ? awalHal : 'absen');
   tandaiBagian(); hitungTeksBagian();
   if (supabaseClient && !MODE_ADMIN) supabaseClient.auth.getSession().then(function (r) { return periksaAdmin(r.data && r.data.session ? r.data.session.user : null); }).catch(function () { toast('Tidak bisa memeriksa sesi Supabase'); });
+  window.setInterval(function () {
+    if (document.hidden) return;
+    if (halAktif === 'izin' && !adminUser && tokenIzinTersimpan().length) muatIzinKaryawan();
+  }, 45000);
+  window.addEventListener('focus', function () {
+    if (halAktif === 'izin' && !adminUser && tokenIzinTersimpan().length) muatIzinKaryawan();
+    if (halAktif === 'rekap' && adminUser) muatAbsenCloud();
+  });
 })();
