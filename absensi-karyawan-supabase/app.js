@@ -638,7 +638,7 @@ var KONFIG = {
           var statusBaru = setuju ? 'disetujui' : 'ditolak', waktuProses = new Date().toISOString();
           supabaseClient.from('izin').update({ status: statusBaru, diproses: waktuProses }).eq('id', id).select('id').maybeSingle().then(function (r) {
             if (r.error) { toast('Status gagal disimpan ke Supabase'); return; }
-            if (!r.data) { toast('Status tidak berubah. Periksa akun admin dan aturan akses Supabase.'); return; }
+           if (!r.data) { toast('Status tidak berubah. Periksa akun admin dan aturan akses Supabase.'); return; }
             z.status = statusBaru; z.diproses = waktuProses; simpan();
           var li = b.closest('.izin');
           var lanjut = function () { muatIzinCloud(); toast(setuju ? 'Pengajuan disetujui' : 'Pengajuan ditolak'); };
