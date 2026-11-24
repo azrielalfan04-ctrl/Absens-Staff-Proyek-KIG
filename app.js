@@ -83,7 +83,7 @@ var KONFIG = {
     return lebih >= (minL || 0) ? lebih : 0;
   }
 
-  var D, supabaseClient = null, adminUser = null;
+  var D, supabaseClient = null, adminUser = null, izinKalenderCloud = [];
   var cloudIzinAktif = !!(KONFIG.supabaseUrl && KONFIG.supabasePublishableKey);
   function tokenIzinTersimpan() {
     try { var a = JSON.parse(localStorage.getItem(KUNCI_TOKEN_IZIN) || '[]'); return Array.isArray(a) ? a : []; }
@@ -124,6 +124,18 @@ var KONFIG = {
       else if (berubah.length) toast(berubah[0].pesan + (berubah.length > 1 ? ' Ada ' + (berubah.length - 1) + ' pembaruan status lain.' : ''));
       return !gagal;
     }).catch(function () { toast('Tidak bisa memeriksa status izin. Periksa koneksi internet.'); return false; });
+  }
+  function muatIzinKalenderCloud() {
+    if (!supabaseClient) return Promise.resolve(false);
+    return supabaseClient.rpc('kalender_izin_disetujui').then(function (r) {
+      if (r.error) { toast('Tanda izin kalender gagal dimuat. Jalankan SQL kalender izin di Supabase.'); return false; }
+      izinKalenderCloud = (r.data || []).map(function (z) {
+        if (!karyawan(z.kid)) D.karyawan.push({ id: z.kid, nama: z.nama_karyawan || 'Karyawan', jabatan: '', shift: 'pagi', pin: '', hariKerja: [1, 2, 3, 4, 5, 6], aktif: true, warna: WARNA_AVATAR[D.karyawan.length % WARNA_AVATAR.length], mulai: z.dari });
+        return { kid: z.kid, nama: z.nama_karyawan, jenis: z.jenis, dari: z.dari, sampai: z.sampai, status: 'disetujui' };
+      });
+      if (halAktif === 'kalender') renderKalender();
+      return true;
+    }).catch(function () { toast('Tidak bisa memuat izin kalender. Periksa koneksi internet.'); return false; });
   }
   function sinkronkanAbsen(rec, pulang) {
     if (!cloudIzinAktif || !supabaseClient) return Promise.resolve(false);
@@ -219,7 +231,7 @@ var KONFIG = {
     return D.absen.filter(function (a) { return a.kid === kid && !a.pulang && kini - new Date(a.masuk) < 20 * 3600e3; })[0];
   }
   function izinPada(kid, tgl, semua) {
-    return D.izin.filter(function (z) { return z.kid === kid && (semua || z.status === 'disetujui') && z.dari <= tgl && z.sampai >= tgl; })[0];
+    return D.izin.filter(function (z) { return z.kid === kid && (semua || z.status === 'disetujui') && z.dari <= tgl && z.sampai >= tgl; })[0] || izinKalenderCloud.filter(function (z) { return z.kid === kid && z.dari <= tgl && z.sampai >= tgl; })[0];
   }
   // status: hadir | telat | izin | sakit | cuti | alpa | libur | belum | nanti | '' (sebelum mulai kerja)
   function statusHari(k, tgl) {
@@ -531,6 +543,7 @@ var KONFIG = {
     if (HAL_ADMIN.indexOf(h) >= 0 && !lewatiKunci && !adminUser) { perluAdmin().then(function (ok) { if (ok) buka(h, true); }); return; }
     if (h === 'izin') { if (adminUser) muatIzinCloud(); else muatIzinKaryawan(); }
     if (h === 'rekap' && adminUser) muatAbsenCloud();
+    if (h === 'kalender') muatIzinKalenderCloud();
     halAktif = h;
     $$('.hal').forEach(function (s) { s.hidden = s.id !== 'hal-' + h; });
     $$('.nav[data-hal]').forEach(function (b) { var on = b.getAttribute('data-hal') === h; b.classList.toggle('aktif', on); if (on) { b.setAttribute('aria-current', 'page'); b.setAttribute('data-bagian', 'utama'); } else { b.removeAttribute('aria-current'); b.removeAttribute('data-bagian'); } });

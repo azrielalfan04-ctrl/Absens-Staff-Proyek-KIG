@@ -15,7 +15,7 @@ Folder ini berisi versi aplikasi yang menyinkronkan pengajuan izin dan catatan c
 2. Buka file `supabase/izin-schema.sql`, salin seluruh isinya, tempel ke SQL Editor, lalu pilih **Run**. File ini menambahkan kolom yang hilang pada tabel `izin` yang sudah ada, sehingga tidak perlu menghapus tabel atau datanya.
 3. File SQL sudah memuat UID admin yang Anda kirim. Jika akun Supabase tersebut sudah dibuat, perintah di bagian bawah file akan mendaftarkannya saat Anda menjalankan SQL.
 4. Jangan membuat policy yang memberi akses `SELECT` kepada `anon`. Policy dalam file ini membolehkan pengunjung mengirim pengajuan berstatus **menunggu**, tetapi hanya admin terdaftar yang dapat membaca dan memproses data.
-5. Karena tabel izin Anda sudah dibuat, jalankan isi `supabase/izin-status-update.sql` sekali di **SQL Editor → New query → Run** (jika belum dijalankan).
+5. Karena tabel izin Anda sudah dibuat, jalankan isi terbaru `supabase/izin-status-update.sql` di **SQL Editor → New query → Run**. Jika pernah menjalankan versi sebelumnya, jalankan ulang file yang terbaru; file ini sekarang juga menambahkan fungsi untuk tanda kalender bersama.
 6. Jalankan isi `supabase/absensi-sync-update.sql` sekali di **SQL Editor → New query → Run**. Ini membuat tabel absensi bersama: publik dapat mengirim check-in, sementara hanya admin terdaftar dapat membaca seluruh rekap. Jangan unggah kode aplikasi terbaru sebelum kedua SQL berhasil dijalankan.
 
 ## C. Terbitkan lewat GitHub Pages
@@ -35,6 +35,7 @@ URL proyek dan publishable key Supabase sudah diisi di `app.js`. Publishable key
 - Admin memakai tombol **Muat ulang** untuk mengambil pengajuan terbaru, lalu menyetujui atau menolaknya.
 - Check-in/check-out baru akan dikirim ke Supabase, lalu muncul pada rekap setelah admin masuk. Perangkat harus tersambung internet saat absen; jika sinkronisasi gagal, aplikasi memberi pesan bahwa catatan hanya tersimpan di perangkat itu.
 - Setelah pembaruan dipasang dan SQL status dijalankan, pengaju dapat melihat status pengajuan dari browser/perangkat tempat ia mengirimnya, melalui tab **Izin**. Aplikasi mengecek pembaruan saat tab Izin dibuka dan berkala selama halaman itu terbuka; status yang berubah akan muncul sebagai pesan. Tombol **Muat ulang** juga bisa dipakai.
+- Kalender mengambil pengajuan yang disetujui dari Supabase agar tanda tanggalnya terlihat di perangkat lain. Untuk privasi, tanda bersama ditampilkan sebagai **Izin** generik; alasan dan pembedaan sakit/cuti hanya terlihat oleh admin serta pengaju di browsernya.
 
 Token status izin dan check-in tersimpan di browser pengaju. Jadi status izin dan check-out perlu dilakukan dari browser/perangkat yang sama. Pengajuan izin dan absensi lama tidak otomatis diunggah. Pemberitahuan status izin tampil di dalam aplikasi, bukan push notification ketika aplikasi tertutup. Dengan pilihan **pilih nama**, aplikasi tidak memverifikasi identitas karyawan; setiap pengunjung dapat memilih nama dan mengirim check-in.
 
