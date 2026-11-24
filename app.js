@@ -633,13 +633,15 @@ var KONFIG = {
         perluAdmin().then(function (ok) {
           if (!ok) return;
           var z = D.izin.filter(function (x) { return x.id === id; })[0]; if (!z) return;
+          var z = D.izin.filter(function (x) { return String(x.id) === String(id); })[0];
+          if (!z) { toast('Pengajuan tidak ditemukan. Tekan Muat ulang lalu coba lagi.'); return; }
           if (!adminUser) { toast('Masuk sebagai admin untuk memproses pengajuan'); return; }
           var statusBaru = setuju ? 'disetujui' : 'ditolak', waktuProses = new Date().toISOString();
           supabaseClient.from('izin').update({ status: statusBaru, diproses: waktuProses }).eq('id', id).then(function (r) {
+          supabaseClient.from('izin').update({ status: statusBaru, diproses: waktuProses }).eq('id', id).select('id').maybeSingle().then(function (r) {
             if (r.error) { toast('Status gagal disimpan ke Supabase'); return; }
+            if (!r.data) { toast('Status tidak berubah. Periksa akun admin dan aturan akses Supabase.'); return; }
             z.status = statusBaru; z.diproses = waktuProses; simpan();
-          var li = b.closest('.izin');
-          var lanjut = function () { muatIzinCloud(); toast(setuju ? 'Pengajuan disetujui' : 'Pengajuan ditolak'); };
           if (li && !kurangGerak) { li.style.transition = 'opacity .25s, transform .25s'; li.style.opacity = '0'; li.style.transform = 'scale(.96)'; setTimeout(lanjut, 240); } else lanjut();
           });
         });
