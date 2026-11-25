@@ -1,6 +1,6 @@
 # Absensi Karyawan
 
-Web app absensi untuk UMKM dan kantor kecil. Karyawan cukup tap tombol besar untuk check-in/out. Admin bisa lihat siapa yang telat, menyetujui izin, dan menghitung rekap bulanan sampai perkiraan tunjangan. Semuanya jalan di browser tanpa server dan tanpa daftar akun. Bisa dipasang di layar utama HP (PWA).
+Web app absensi Karyawan cukup tap tombol besar untuk check-in/out. Admin bisa lihat siapa yang telat, menyetujui izin, dan menghitung rekap bulanan sampai perkiraan tunjangan. Semuanya jalan di browser tanpa server dan tanpa daftar akun. Bisa dipasang di layar utama HP (PWA).
 
 > Beda dengan paket **Presensi GPS (Google Apps Script)**: paket ini web statis lengkap. Data tersimpan di perangkat, tidak di Google Sheets, dan ada mode kiosk untuk satu tablet yang dipakai bersama.
 
