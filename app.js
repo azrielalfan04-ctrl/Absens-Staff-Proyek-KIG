@@ -83,7 +83,7 @@ var KONFIG = {
     return lebih >= (minL || 0) ? lebih : 0;
   }
 
-  var D, supabaseClient = null, adminUser = null, izinKalenderCloud = [];
+  var D, supabaseClient = null, adminUser = null, izinKalenderCloud = [], daftarKaryawanCloudAktif = false;
   var cloudIzinAktif = !!(KONFIG.supabaseUrl && KONFIG.supabasePublishableKey);
   function tokenIzinTersimpan() {
     try { var a = JSON.parse(localStorage.getItem(KUNCI_TOKEN_IZIN) || '[]'); return Array.isArray(a) ? a : []; }
@@ -130,12 +130,44 @@ var KONFIG = {
     return supabaseClient.rpc('kalender_izin_disetujui').then(function (r) {
       if (r.error) { toast('Tanda izin kalender gagal dimuat. Jalankan SQL kalender izin di Supabase.'); return false; }
       izinKalenderCloud = (r.data || []).map(function (z) {
-        if (!karyawan(z.kid)) D.karyawan.push({ id: z.kid, nama: z.nama_karyawan || 'Karyawan', jabatan: '', shift: 'pagi', pin: '', hariKerja: [1, 2, 3, 4, 5, 6], aktif: true, warna: WARNA_AVATAR[D.karyawan.length % WARNA_AVATAR.length], mulai: z.dari });
+        if (!daftarKaryawanCloudAktif && !karyawan(z.kid)) D.karyawan.push({ id: z.kid, nama: z.nama_karyawan || 'Karyawan', jabatan: '', shift: 'pagi', pin: '', hariKerja: [1, 2, 3, 4, 5, 6], aktif: true, warna: WARNA_AVATAR[D.karyawan.length % WARNA_AVATAR.length], mulai: z.dari });
         return { kid: z.kid, nama: z.nama_karyawan, jenis: z.jenis, dari: z.dari, sampai: z.sampai, status: 'disetujui' };
       });
       if (halAktif === 'kalender') renderKalender();
       return true;
     }).catch(function () { toast('Tidak bisa memuat izin kalender. Periksa koneksi internet.'); return false; });
+  }
+  function barisKaryawanCloud(k) {
+    return { id: k.id, nama: k.nama, jabatan: k.jabatan || '', shift: k.shift || 'pagi', hari_kerja: k.hariKerja || [1, 2, 3, 4, 5, 6], aktif: k.aktif !== false, warna: k.warna || WARNA_AVATAR[0], mulai: k.mulai || kunciTgl(new Date()) };
+  }
+  function simpanKaryawanCloud(k) {
+    if (!adminUser || !supabaseClient) return Promise.resolve(false);
+    return supabaseClient.from('karyawan').upsert(barisKaryawanCloud(k), { onConflict: 'id' }).then(function (r) { return !r.error; }).catch(function () { return false; });
+  }
+  function hapusKaryawanCloud(kid) {
+    if (!adminUser || !supabaseClient) return Promise.resolve(false);
+    return supabaseClient.from('karyawan').delete().eq('id', kid).then(function (r) { return !r.error; }).catch(function () { return false; });
+  }
+  function muatKaryawanCloud() {
+    if (!supabaseClient) return Promise.resolve(false);
+    var lokal = D.karyawan.slice();
+    return supabaseClient.from('karyawan').select('id,nama,jabatan,shift,hari_kerja,aktif,warna,mulai').order('nama').then(function (r) {
+      if (r.error) { toast('Daftar karyawan bersama gagal dimuat. Admin perlu menjalankan SQL sinkronisasi karyawan.'); return false; }
+      if ((!r.data || !r.data.length) && adminUser && lokal.length) {
+        return supabaseClient.from('karyawan').upsert(lokal.map(barisKaryawanCloud), { onConflict: 'id' }).then(function (s) {
+          if (s.error) { toast('Daftar karyawan lama gagal disalin ke Supabase.'); return false; }
+          return muatKaryawanCloud();
+        });
+      }
+      if (r.data && r.data.length) {
+        D.karyawan = r.data.map(function (x) {
+          var lama = lokal.filter(function (k) { return k.id === x.id; })[0] || {};
+          return { id: x.id, nama: x.nama, jabatan: x.jabatan || '', shift: x.shift || 'pagi', hariKerja: x.hari_kerja || [1, 2, 3, 4, 5, 6], aktif: x.aktif !== false, warna: x.warna || WARNA_AVATAR[0], mulai: x.mulai || kunciTgl(new Date()), pin: lama.pin || '', foto: lama.foto || '' };
+        });
+      }
+      daftarKaryawanCloudAktif = true;
+      simpan(); renderSemua(); return true;
+    }).catch(function () { toast('Tidak bisa memuat daftar karyawan dari Supabase.'); return false; });
   }
   function sinkronkanAbsen(rec, pulang) {
     if (!cloudIzinAktif || !supabaseClient) return Promise.resolve(false);
@@ -397,7 +429,7 @@ var KONFIG = {
     return supabaseClient.from('admin_users').select('user_id').eq('user_id', user.id).maybeSingle().then(function (r) {
       adminUser = !r.error && r.data ? user : null;
       statusTombolAdmin();
-      if (adminUser) return muatIzinCloud().then(function () { return muatAbsenCloud(); }).then(function () { return adminUser; });
+      if (adminUser) return muatIzinCloud().then(function () { return muatAbsenCloud(); }).then(function () { return muatKaryawanCloud(); }).then(function () { return adminUser; });
       if (!r.error && supabaseClient) supabaseClient.auth.signOut();
       return null;
     });
@@ -544,6 +576,7 @@ var KONFIG = {
     if (h === 'izin') { if (adminUser) muatIzinCloud(); else muatIzinKaryawan(); }
     if (h === 'rekap' && adminUser) muatAbsenCloud();
     if (h === 'kalender') muatIzinKalenderCloud();
+    if (h === 'karyawan' && adminUser) muatKaryawanCloud();
     halAktif = h;
     $$('.hal').forEach(function (s) { s.hidden = s.id !== 'hal-' + h; });
     $$('.nav[data-hal]').forEach(function (b) { var on = b.getAttribute('data-hal') === h; b.classList.toggle('aktif', on); if (on) { b.setAttribute('aria-current', 'page'); b.setAttribute('data-bagian', 'utama'); } else { b.removeAttribute('aria-current'); b.removeAttribute('data-bagian'); } });
@@ -832,7 +865,9 @@ var KONFIG = {
       k.hariKerja = $$('.hari-kerja input:checked').map(function (c) { return +c.value; }); k.aktif = $('#fkAktif').checked;
       if (fotoBaru) k.foto = fotoBaru; else delete k.foto;
       if (baru) { k.id = 'k' + uid(); k.warna = WARNA_AVATAR[D.karyawan.length % WARNA_AVATAR.length]; k.mulai = kunciTgl(new Date()); D.karyawan.push(k); }
-      simpan(); tutupDialog('simpan'); renderSemua(); toast(baru ? k.nama + ' ditambahkan' : 'Data karyawan disimpan');
+      simpan(); tutupDialog('simpan'); renderSemua();
+      if (cloudIzinAktif) simpanKaryawanCloud(k).then(function (ok) { toast(ok ? (baru ? k.nama + ' ditambahkan dan disimpan bersama' : 'Data karyawan tersinkron ke perangkat lain') : 'Data karyawan tersimpan di perangkat ini saja. Periksa SQL Supabase dan koneksi.'); });
+      else toast(baru ? k.nama + ' ditambahkan' : 'Data karyawan disimpan');
       void asli;
     };
   }
@@ -844,7 +879,9 @@ var KONFIG = {
       D.karyawan = D.karyawan.filter(function (x) { return x.id !== k.id; });
       D.absen = D.absen.filter(function (a) { return a.kid !== k.id; });
       D.izin = D.izin.filter(function (z) { return z.kid !== k.id; });
-      simpan(); renderSemua(); toast(k.nama + ' dihapus');
+      simpan(); renderSemua();
+      if (cloudIzinAktif) hapusKaryawanCloud(k.id).then(function (sukses) { toast(sukses ? k.nama + ' dihapus dari daftar bersama' : 'Karyawan dihapus dari perangkat ini, tetapi belum dari Supabase.'); });
+      else toast(k.nama + ' dihapus');
     });
   }
   function formShift(s) {
@@ -1094,13 +1131,17 @@ var KONFIG = {
   } else if (awalHal === 'kiosk') { buka('absen'); bukaKiosk(); }
   else buka(['absen', 'kalender', 'rekap', 'izin', 'karyawan', 'atur'].indexOf(awalHal) >= 0 ? awalHal : 'absen');
   tandaiBagian(); hitungTeksBagian();
-  if (supabaseClient && !MODE_ADMIN) supabaseClient.auth.getSession().then(function (r) { return periksaAdmin(r.data && r.data.session ? r.data.session.user : null); }).catch(function () { toast('Tidak bisa memeriksa sesi Supabase'); });
+  if (supabaseClient && !MODE_ADMIN) supabaseClient.auth.getSession().then(function (r) {
+    return periksaAdmin(r.data && r.data.session ? r.data.session.user : null).then(function (u) { if (!u) return muatKaryawanCloud(); });
+  }).catch(function () { toast('Tidak bisa memeriksa sesi Supabase'); });
   window.setInterval(function () {
     if (document.hidden) return;
     if (halAktif === 'izin' && !adminUser && tokenIzinTersimpan().length) muatIzinKaryawan();
+    if (!adminUser) muatKaryawanCloud();
   }, 45000);
   window.addEventListener('focus', function () {
     if (halAktif === 'izin' && !adminUser && tokenIzinTersimpan().length) muatIzinKaryawan();
     if (halAktif === 'rekap' && adminUser) muatAbsenCloud();
+    if (!adminUser) muatKaryawanCloud();
   });
 })();

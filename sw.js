@@ -1,5 +1,5 @@
 /* Service worker sederhana: simpan berkas aplikasi supaya bisa dibuka tanpa internet. Naikkan VERSI tiap ubah berkas. */
-var VERSI = 'absensi-v11-calendar-izin';
+var VERSI = 'absensi-v12-karyawan-cloud';
 var BERKAS = ['./', 'index.html', 'style.css', 'app.js', 'tema.css', 'tema.js', 'ikon.svg', 'manifest.json', 'img/logo.svg', 'img/karyawan.svg'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(VERSI).then(function (c) { return c.addAll(BERKAS); })); self.skipWaiting(); });
 self.addEventListener('activate', function (e) { e.waitUntil(caches.keys().then(function (k) { return Promise.all(k.filter(function (n) { return n !== VERSI; }).map(function (n) { return caches.delete(n); })); })); self.clients.claim(); });
