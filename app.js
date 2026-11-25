@@ -85,6 +85,7 @@ var KONFIG = {
 
   var D, supabaseClient = null, adminUser = null, izinKalenderCloud = [], daftarKaryawanCloudAktif = false, lokasiCloudDimuat = false;
   var cloudIzinAktif = !!(KONFIG.supabaseUrl && KONFIG.supabasePublishableKey);
+  var pesanGagalSinkronAbsen = '';
   function tokenIzinTersimpan() {
     try { var a = JSON.parse(localStorage.getItem(KUNCI_TOKEN_IZIN) || '[]'); return Array.isArray(a) ? a : []; }
     catch (e) { return []; }
@@ -191,22 +192,50 @@ var KONFIG = {
     }).catch(function () { toast('Lokasi tersimpan di laptop ini saja. Periksa koneksi.'); return false; });
   }
   function sinkronkanAbsen(rec, pulang) {
-    if (!cloudIzinAktif || !supabaseClient) return Promise.resolve(false);
+    pesanGagalSinkronAbsen = '';
+    if (!cloudIzinAktif || !supabaseClient) { pesanGagalSinkronAbsen = 'Koneksi Supabase belum siap.'; return Promise.resolve(false); }
     if (!pulang) {
-      var token = tokenRahasiaBaru(), tokens = tokenAbsenTersimpan();
-      tokens.push({ id: rec.id, token: token }); simpanTokenAbsen(tokens);
+      var tokens = tokenAbsenTersimpan(), tersimpan = tokens.filter(function (x) { return String(x.id) === String(rec.id); })[0];
+      if (tersimpan && tersimpan.synced) return Promise.resolve(true);
+      if (!tersimpan) { tersimpan = { id: rec.id, token: tokenRahasiaBaru(), synced: false }; tokens.push(tersimpan); simpanTokenAbsen(tokens); }
       return supabaseClient.from('absensi').insert({
         id: rec.id, kid: rec.kid, nama_karyawan: rec.namaKaryawan, jabatan: rec.jabatan || '', tgl: rec.tgl, masuk: rec.masuk,
         telat: rec.telat || 0, lembur: 0, jadwal: rec.jadwal,
-        lokasi: rec.lokasi || null, sumber: rec.sumber || 'hp', checkin_token: token
-      }).then(function (r) { return !r.error; }).catch(function () { return false; });
+        lokasi: rec.lokasi || null, sumber: rec.sumber || 'hp', checkin_token: tersimpan.token
+      }).then(function (r) {
+        if (r.error) { pesanGagalSinkronAbsen = (r.error.code ? r.error.code + ': ' : '') + r.error.message; return false; }
+        tersimpan.synced = true; simpanTokenAbsen(tokens); return true;
+      }).catch(function (e) { pesanGagalSinkronAbsen = e && e.message ? e.message : 'Koneksi gagal'; return false; });
     }
     var saved = tokenAbsenTersimpan().filter(function (x) { return x.id === rec.id; })[0];
-    if (!saved) return Promise.resolve(false);
+    if (!saved) { pesanGagalSinkronAbsen = 'Token check-in tidak ditemukan di browser ini.'; return Promise.resolve(false); }
     return supabaseClient.rpc('simpan_pulang_absen', {
       p_token: saved.token, p_pulang: rec.pulang, p_lembur: rec.lembur || 0,
       p_lokasi_pulang: rec.lokasiPulang || null
-    }).then(function (r) { return !r.error && r.data === true; }).catch(function () { return false; });
+    }).then(function (r) {
+      if (r.error) { pesanGagalSinkronAbsen = (r.error.code ? r.error.code + ': ' : '') + r.error.message; return false; }
+      if (r.data !== true) { pesanGagalSinkronAbsen = 'Catatan check-in belum ditemukan di Supabase.'; return false; }
+      saved.pulangSynced = true; simpanTokenAbsen(tokenAbsenTersimpan()); return true;
+    }).catch(function (e) { pesanGagalSinkronAbsen = e && e.message ? e.message : 'Koneksi gagal'; return false; });
+  }
+  function ulangiSinkronAbsenLokal() {
+    if (!supabaseClient) return Promise.resolve(false);
+    var belum = tokenAbsenTersimpan().filter(function (x) {
+      var rec = D.absen.filter(function (a) { return String(a.id) === String(x.id); })[0];
+      return !x.synced || (rec && rec.pulang && !x.pulangSynced);
+    });
+    return Promise.all(belum.map(function (x) {
+      var rec = D.absen.filter(function (a) { return String(a.id) === String(x.id); })[0];
+      if (!rec) return Promise.resolve(false);
+      return sinkronkanAbsen(rec, false).then(function (ok) {
+        if (!ok) return false;
+        if (rec.pulang) return sinkronkanAbsen(rec, true);
+        return true;
+      });
+    })).then(function (hasil) {
+      if (hasil.some(Boolean)) toast('Absen yang sebelumnya tersimpan lokal berhasil disinkronkan ke Supabase.');
+      return hasil.some(Boolean);
+    });
   }
   function muatAbsenCloud() {
     if (!adminUser || !supabaseClient) return Promise.resolve(false);
@@ -345,7 +374,7 @@ var KONFIG = {
   }
   function chip(s) { return s ? '<span class="status st-' + s + '">' + esc(LABEL[s] || s) + '</span>' : ''; }
   var tToast;
-  function toast(t) { var el = $('#toast'); el.textContent = t; el.classList.add('tampil'); clearTimeout(tToast); tToast = setTimeout(function () { el.classList.remove('tampil'); }, 2800); }
+  function toast(t) { var el = $('#toast'); el.textContent = t; el.classList.add('tampil'); clearTimeout(tToast); tToast = setTimeout(function () { el.classList.remove('tampil'); }, t.length > 100 ? 8500 : 2800); }
   var WARNA_ST = { hadir: 'var(--s-hadir)', telat: 'var(--s-telat)', izin: 'var(--s-izin)', sakit: 'var(--s-sakit)', cuti: 'var(--s-cuti)', alpa: 'var(--s-alpa)', belum: 'color-mix(in srgb, var(--teks) 22%, var(--kartu))', libur: 'var(--s-libur)' };
   function donat(svg, bagian, total, angkaTeks, ket) {
     var C = 2 * Math.PI * 48, off = 0, html = '<circle class="dasar" cx="60" cy="60" r="48"/>';
@@ -582,7 +611,7 @@ var KONFIG = {
         simpan();
         return sinkronkanAbsen(rec, pulang).then(function (terkirim) {
           renderSemua();
-          if (cloudIzinAktif && !terkirim) toast('Absen tersimpan di perangkat ini, tetapi belum tersinkron ke admin. Periksa internet dan pengaturan Supabase.');
+          if (cloudIzinAktif && !terkirim) toast('Absen tersimpan di perangkat ini, tetapi belum tersinkron ke admin. Supabase: ' + (pesanGagalSinkronAbsen || 'periksa koneksi dan aturan tabel absensi.'));
           var telat = !pulang && rec.telat > 0;
           var sub = pulang ? 'Durasi kerja ' + durasi((new Date(rec.pulang) - new Date(rec.masuk)) / 60e3) + (rec.lembur ? ' · lembur ' + durasi(rec.lembur) : '') : telat ? 'Telat ' + rec.telat + ' menit dari jadwal ' + rec.jadwal.masuk : 'Tepat waktu. Semangat kerjanya!';
           var html = '<div class="hasil"><span class="centang' + (telat ? ' telat' : '') + '"><svg><use href="#i-cek"/></svg></span><p class="waktu">' + jamDari(pulang ? rec.pulang : rec.masuk) + '</p><b>' + (pulang ? 'Sampai jumpa besok, ' : 'Selamat bekerja, ') + esc(k.nama.split(' ')[0]) + '</b><p class="redup">' + esc(sub) + '</p>' +
@@ -1176,5 +1205,7 @@ var KONFIG = {
     if (halAktif === 'rekap' && adminUser) muatAbsenCloud();
     if (!adminUser) muatKaryawanCloud();
     if (!adminUser) muatLokasiCloud();
+    ulangiSinkronAbsenLokal();
   });
+  window.setTimeout(function () { ulangiSinkronAbsenLokal(); }, 2500);
 })();
