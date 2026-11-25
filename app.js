@@ -83,7 +83,7 @@ var KONFIG = {
     return lebih >= (minL || 0) ? lebih : 0;
   }
 
-  var D, supabaseClient = null, adminUser = null, izinKalenderCloud = [], daftarKaryawanCloudAktif = false;
+  var D, supabaseClient = null, adminUser = null, izinKalenderCloud = [], daftarKaryawanCloudAktif = false, lokasiCloudDimuat = false;
   var cloudIzinAktif = !!(KONFIG.supabaseUrl && KONFIG.supabasePublishableKey);
   function tokenIzinTersimpan() {
     try { var a = JSON.parse(localStorage.getItem(KUNCI_TOKEN_IZIN) || '[]'); return Array.isArray(a) ? a : []; }
@@ -168,6 +168,27 @@ var KONFIG = {
       daftarKaryawanCloudAktif = true;
       simpan(); renderSemua(); return true;
     }).catch(function () { toast('Tidak bisa memuat daftar karyawan dari Supabase.'); return false; });
+  }
+  function muatLokasiCloud() {
+    if (!supabaseClient) return Promise.resolve(false);
+    return supabaseClient.from('pengaturan_lokasi').select('id,lat,lng,radius,pakai,wajib').eq('id', 1).maybeSingle().then(function (r) {
+      if (r.error) { toast('Pengaturan lokasi bersama gagal dimuat. Admin perlu menjalankan SQL sinkronisasi lokasi.'); return false; }
+      if (!r.data) {
+        lokasiCloudDimuat = true;
+        if (adminUser) return simpanLokasiCloud().then(function (ok) { return ok; });
+        return true;
+      }
+      D.kantor = { lat: r.data.lat, lng: r.data.lng, radius: r.data.radius, pakai: r.data.pakai, wajib: r.data.wajib };
+      lokasiCloudDimuat = true; simpan(); renderSemua(); return true;
+    }).catch(function () { toast('Tidak bisa memuat pengaturan lokasi Supabase.'); return false; });
+  }
+  function simpanLokasiCloud() {
+    if (!adminUser || !supabaseClient) return Promise.resolve(false);
+    var row = { id: 1, lat: D.kantor.lat, lng: D.kantor.lng, radius: D.kantor.radius, pakai: D.kantor.pakai, wajib: D.kantor.wajib };
+    return supabaseClient.from('pengaturan_lokasi').upsert(row, { onConflict: 'id' }).then(function (r) {
+      if (r.error) { toast('Lokasi tersimpan di laptop ini saja. Periksa SQL lokasi dan koneksi.'); return false; }
+      lokasiCloudDimuat = true; return true;
+    }).catch(function () { toast('Lokasi tersimpan di laptop ini saja. Periksa koneksi.'); return false; });
   }
   function sinkronkanAbsen(rec, pulang) {
     if (!cloudIzinAktif || !supabaseClient) return Promise.resolve(false);
@@ -429,7 +450,7 @@ var KONFIG = {
     return supabaseClient.from('admin_users').select('user_id').eq('user_id', user.id).maybeSingle().then(function (r) {
       adminUser = !r.error && r.data ? user : null;
       statusTombolAdmin();
-      if (adminUser) return muatIzinCloud().then(function () { return muatAbsenCloud(); }).then(function () { return muatKaryawanCloud(); }).then(function () { return adminUser; });
+      if (adminUser) return muatIzinCloud().then(function () { return muatAbsenCloud(); }).then(function () { return muatKaryawanCloud(); }).then(function () { return muatLokasiCloud(); }).then(function () { return adminUser; });
       if (!r.error && supabaseClient) supabaseClient.auth.signOut();
       return null;
     });
@@ -506,6 +527,12 @@ var KONFIG = {
 
   // ---------- Alur absen ----------
   function prosesAbsen(kid, sumber) {
+    if (cloudIzinAktif && !lokasiCloudDimuat) {
+      return muatLokasiCloud().then(function (ok) {
+        if (!ok) { toast('Aturan lokasi Supabase belum termuat. Coba lagi setelah admin menyimpan pengaturan lokasi.'); return null; }
+        return prosesAbsen(kid, sumber);
+      });
+    }
     var k = karyawan(kid); if (!k) { toast('Pilih karyawan dulu'); return Promise.resolve(); }
     var hariIni = kunciTgl(new Date()), terbuka = absenTerbuka(kid), sudah = absenTgl(kid, hariIni);
     if (!terbuka && sudah && sudah.pulang) { toast(k.nama.split(' ')[0] + ' sudah absen pulang hari ini'); return Promise.resolve(); }
@@ -524,7 +551,7 @@ var KONFIG = {
         if (D.kantor.lat != null && D.kantor.lng != null) {
           lokasi.jarak = jarakMeter(lokasi, { lat: D.kantor.lat, lng: D.kantor.lng });
           if (D.kantor.wajib && lokasi.jarak > D.kantor.radius) {
-            dialog('Di luar area kantor', '<p>Kamu berada <b>' + lokasi.jarak.toLocaleString('id-ID') + ' m</b> dari kantor, batasnya ' + D.kantor.radius + ' m. Datang ke kantor dulu, ya.</p>', [{ label: 'Mengerti', kelas: 'utama' }]);
+            dialog('Di luar area kantor', '<p>Lokasi HP terbaca <b>' + lokasi.jarak.toLocaleString('id-ID') + ' m</b> dari titik kantor, melebihi batas ' + D.kantor.radius + ' m. Akurasi GPS saat ini ±' + (g.akurasi || '?') + ' m. Coba aktifkan lokasi presisi dan ulangi di area terbuka.</p>', [{ label: 'Mengerti', kelas: 'utama' }]);
             return null;
           }
         }
@@ -923,7 +950,9 @@ var KONFIG = {
     if (lng && (isNaN(ln) || ln < -180 || ln > 180)) { $('#inLng').setAttribute('aria-invalid', 'true'); toast('Bujur harus antara -180 dan 180'); return; }
     if ($('#wajibRadius').checked && (!lat || !lng)) { toast('Isi koordinat kantor dulu untuk mewajibkan radius'); return; }
     D.kantor = { lat: lat ? la : null, lng: lng ? ln : null, radius: Math.max(20, Math.min(5000, angka($('#inRadius').value) || 100)), pakai: $('#pakaiLokasi').checked || $('#wajibRadius').checked, wajib: $('#wajibRadius').checked };
-    simpan(); renderAtur(); toast('Lokasi kantor disimpan');
+    simpan(); renderAtur();
+    if (cloudIzinAktif) simpanLokasiCloud().then(function (ok) { if (ok) toast('Lokasi kantor tersimpan dan dibagikan ke semua HP'); });
+    else toast('Lokasi kantor disimpan di perangkat ini');
   };
   $('#lokasiSini').onclick = function () {
     var b = this; b.disabled = true; $('#lokasiInfo').textContent = 'Mengambil lokasi…';
@@ -1132,16 +1161,20 @@ var KONFIG = {
   else buka(['absen', 'kalender', 'rekap', 'izin', 'karyawan', 'atur'].indexOf(awalHal) >= 0 ? awalHal : 'absen');
   tandaiBagian(); hitungTeksBagian();
   if (supabaseClient && !MODE_ADMIN) supabaseClient.auth.getSession().then(function (r) {
-    return periksaAdmin(r.data && r.data.session ? r.data.session.user : null).then(function (u) { if (!u) return muatKaryawanCloud(); });
+    return periksaAdmin(r.data && r.data.session ? r.data.session.user : null).then(function (u) {
+      if (!u) return muatKaryawanCloud().then(function () { return muatLokasiCloud(); });
+    });
   }).catch(function () { toast('Tidak bisa memeriksa sesi Supabase'); });
   window.setInterval(function () {
     if (document.hidden) return;
     if (halAktif === 'izin' && !adminUser && tokenIzinTersimpan().length) muatIzinKaryawan();
     if (!adminUser) muatKaryawanCloud();
+    if (!adminUser) muatLokasiCloud();
   }, 45000);
   window.addEventListener('focus', function () {
     if (halAktif === 'izin' && !adminUser && tokenIzinTersimpan().length) muatIzinKaryawan();
     if (halAktif === 'rekap' && adminUser) muatAbsenCloud();
     if (!adminUser) muatKaryawanCloud();
+    if (!adminUser) muatLokasiCloud();
   });
 })();

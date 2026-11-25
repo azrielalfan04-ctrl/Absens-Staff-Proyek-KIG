@@ -1,6 +1,6 @@
 # Menyambungkan pengajuan izin ke Supabase
 
-Folder ini berisi versi aplikasi yang menyinkronkan profil dasar karyawan, pengajuan izin, dan catatan check-in/check-out ke Supabase. Pengaturan, PIN, foto, serta pengaturan shift tetap tersimpan lokal.
+Folder ini berisi versi aplikasi yang menyinkronkan profil dasar karyawan, lokasi kantor, pengajuan izin, dan catatan check-in/check-out ke Supabase. PIN, foto, serta pengaturan shift tetap tersimpan lokal.
 
 ## A. Siapkan akun admin
 
@@ -17,7 +17,8 @@ Folder ini berisi versi aplikasi yang menyinkronkan profil dasar karyawan, penga
 4. Jalankan `supabase/izin-kalender-update.sql` untuk tanda izin bersama di kalender.
 5. Jalankan `supabase/absensi-sync-update.sql` untuk sinkronisasi check-in/check-out jika belum pernah sukses.
 6. Jalankan `supabase/karyawan-sync-update.sql` untuk profil karyawan bersama. Semua perangkat bisa membaca nama/jabatan/shift, tetapi hanya admin yang dapat menambah, mengubah, atau menghapus profil.
-7. Tiap file dijalankan sendiri: buka file, salin seluruh isi, tempel ke **New query**, lalu klik **Run**. Jangan unggah kode aplikasi terbaru sebelum SQL yang diperlukan berhasil dijalankan.
+7. Jalankan `supabase/lokasi-sync-update.sql` untuk membagikan titik kantor dan radius ke semua HP.
+8. Tiap file dijalankan sendiri: buka file, salin seluruh isi, tempel ke **New query**, lalu klik **Run**. Jangan unggah kode aplikasi terbaru sebelum SQL yang diperlukan berhasil dijalankan.
 
 ## C. Terbitkan lewat GitHub Pages
 
@@ -38,6 +39,7 @@ URL proyek dan publishable key Supabase sudah diisi di `app.js`. Publishable key
 - Setelah pembaruan dipasang dan SQL status dijalankan, pengaju dapat melihat status pengajuan dari browser/perangkat tempat ia mengirimnya, melalui tab **Izin**. Aplikasi mengecek pembaruan saat tab Izin dibuka dan berkala selama halaman itu terbuka; status yang berubah akan muncul sebagai pesan. Tombol **Muat ulang** juga bisa dipakai.
 - Kalender mengambil pengajuan yang disetujui dari Supabase agar tanda tanggalnya terlihat di perangkat lain. Untuk privasi, tanda bersama ditampilkan sebagai **Izin** generik; alasan dan pembedaan sakit/cuti hanya terlihat oleh admin serta pengaju di browsernya.
 - Tambah/edit/hapus karyawan di menu **Tim** akan disinkronkan. Perangkat karyawan mengambil daftar terbaru saat aplikasi dibuka atau aktif kembali. PIN dan foto tidak ikut disinkronkan; pengaturan shift khusus juga masih lokal.
+- Admin mengatur koordinat/radius dari **Atur → Lokasi kantor → Simpan**. Aturan dibagikan ke HP karyawan; admin perlu membuka aplikasi dan menyimpan pengaturan setelah SQL lokasi dijalankan.
 
 Token status izin dan check-in tersimpan di browser pengaju. Jadi status izin dan check-out perlu dilakukan dari browser/perangkat yang sama. Pengajuan izin dan absensi lama tidak otomatis diunggah. Pemberitahuan status izin tampil di dalam aplikasi, bukan push notification ketika aplikasi tertutup. Dengan pilihan **pilih nama**, aplikasi tidak memverifikasi identitas karyawan; setiap pengunjung dapat memilih nama dan mengirim check-in.
 
